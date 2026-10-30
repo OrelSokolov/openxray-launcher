@@ -1,0 +1,8 @@
+# egui-cr's shard.yml pins minaudio to an SSH git URL (git@github.com:...),
+# which only works with a registered SSH key. Resolve it over https for
+# everyone else; shards merges this file over the dependency tree.
+dependencies:
+  egui-cr:
+    dependencies:
+      minaudio:
+        git: https://github.com/OrelSokolov/minaudio.cr.git

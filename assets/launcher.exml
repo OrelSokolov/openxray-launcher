@@ -1,0 +1,64 @@
+<exml>
+  <!-- xr-launcher UI chrome: the menu bar, the settings page, the status
+       bar and the About modal are declarative here; the dynamic home
+       (sidebar with game buttons, install rows, the install wizard) is
+       drawn natively by the binary when the router is on root/root.
+       Menu/settings labels interpolate i18n slots ({menu_file} …) that
+       the app republishes every frame — a language switch applies on
+       the very next frame. Edit this file while the launcher runs — it
+       hot-reloads. -->
+
+  <partial id="app_menu">
+    <menubar>
+      <menu label="{menu_file}">
+        <item label="{menu_refresh}" on_click="refresh"/>
+        <item label="{menu_quit}" on_click="quit"/>
+      </menu>
+      <menu label="{menu_settings}">
+        <item label="{menu_settings_page}" on_click="settings"/>
+        <item label="{lang_en_mark}English" on_click="lang_en"/>
+        <item label="{lang_ru_mark}Русский" on_click="lang_ru"/>
+      </menu>
+      <menu label="{menu_help}">
+        <item label="{menu_about}" on_click="about"/>
+      </menu>
+    </menubar>
+  </partial>
+
+  <partial id="status_panel">
+    <statusbar id="status">
+      <label text="{status}"/>
+    </statusbar>
+  </partial>
+
+  <!-- The home page: chrome from partials + the native home element.
+       The <launcher_home/> handler opens a ctx.side_panel (game list)
+       and registers the deferred central panel — the same mechanism
+       exml's own <central> uses, so both complete inside ctx.page. -->
+  <page id="root/root">
+    <use partial="app_menu"/>
+    <launcher_home/>
+    <use partial="status_panel"/>
+  </page>
+
+  <page id="root/settings" title="{settings_title}">
+    <use partial="app_menu"/>
+    <central>
+      <heading text="{settings_title}"/>
+      <label text="{settings_language}"/>
+      <combo bind="locale_display" options="English,Русский" on_change="locale_changed"/>
+      <separator/>
+      <label text="{settings_language_note}"/>
+      <separator/>
+      <label text="{settings_store_line}"/>
+      <separator/>
+      <button text="{settings_back}" on_click="back"/>
+    </central>
+    <use partial="status_panel"/>
+  </page>
+
+  <modal id="root/about" title="{about_title}"
+         buttons="OK" on_button="about_ok">
+    <label text="{about_text}"/>
+  </modal>
+</exml>

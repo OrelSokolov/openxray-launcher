@@ -1,0 +1,14 @@
+name: xr-launcher
+version: 1.0.0
+description: |
+  Universal OpenXRay game launcher/installer: assembles a playable
+  S.T.A.L.K.E.R. distribution (engine binaries + symlinked game data +
+  per-game fsgame.ltx + openxray.ltx game mode) from an owned game copy
+  and an OpenXRay build. GUI on egui-cr, headless CLI included.
+license: Multiple   # same as the engine sources (see ../License.txt)
+
+dependencies:
+  egui-cr:
+    github: OrelSokolov/egui.cr
+  i18n:
+    github: crystal-i18n/i18n

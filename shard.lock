@@ -1,0 +1,30 @@
+version: 2.0
+shards:
+  brotli:
+    git: https://github.com/orelsokolov/brotli.cr.git
+    version: 0.3.0
+
+  egui-cr:
+    git: https://github.com/orelsokolov/egui.cr.git
+    version: 0.2.0+git.commit.9d0a278003a0ccc72c29daeac82bd567f077f442
+
+  freetype-cr:
+    git: https://github.com/orelsokolov/freetype.cr.git
+    version: 1.1.0
+
+  highlight_cr:
+    git: https://github.com/orelsokolov/highlight.cr.git
+    version: 0.1.2
+
+  i18n:
+    git: https://github.com/crystal-i18n/i18n.git
+    version: 0.2.2
+
+  minaudio:
+    git: git@github.com:OrelSokolov/minaudio.cr.git
+    version: 0.2.0
+
+  nanosvg:
+    git: https://github.com/orelsokolov/nanosvg.cr.git
+    version: 1.1.0
+

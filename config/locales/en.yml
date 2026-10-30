@@ -1,0 +1,117 @@
+en:
+  app:
+    subtitle: game launcher
+  menu:
+    file: File
+    settings: Settings
+    help: Help
+    install: Install…
+    refresh: Refresh list
+    quit: Quit
+    settings_page: Settings…
+    language_en: "Language: English"
+    language_ru: "Язык: Русский"
+    about: About
+  home:
+    experimental: experimental — see notes below
+    not_installed: not installed
+    installs_count: "%{count} installs"
+    installs_count_one: "%{count} install"
+    no_installs: No distribution installed for this game yet.
+    install_button: "Install %{title}…"
+    created_line: "created %{created} · engine %{engine} · source %{source}"
+    run: Run
+    open_folder: Open folder
+    delete: Delete
+    confirm_delete: Confirm delete (saves too!)
+    cancel: Cancel
+  wizard:
+    step_of: "Step %{step} of %{total} — %{name}"
+    steps:
+      engine: OpenXRay engine folder
+      source: Original game folder
+      target: Install location
+    engine_intro: "Point at the OpenXRay build to play on. Accepted layouts:"
+    engine_layouts: "• a xray-16 checkout (bin/x86_64/Release + res/)\n• the bin/x86_64/Release folder itself\n• an installed prefix (lib/openxray + share/openxray)"
+    source_intro: "Point at your owned install of %{title} (GOG/Steam folder)."
+    source_note: Nothing is modified or copied from it — game data is only symlinked into the new distribution.
+    target_intro: "Where to assemble the distribution (a new folder):"
+    will_create: "Will create:"
+    will_create_body: "%{target}/\n  bin/ (engine) · fsgame.ltx · .installed_ok\n  gamedata/ (GL shaders, openxray.ltx game_mode=%{mode}, script overlays)\n  _appdata_/ (saves, logs) · game data symlinks -> original copy"
+    browse: Browse…
+    ok: OK
+    back: "< Back"
+    next: "Next >"
+    install: Install
+    cancel: Cancel
+  settings:
+    title: Settings
+    language: Language
+    language_note: The interface language applies immediately and is saved in the launcher config.
+    store_line: "Launcher config: %{path}"
+    back: "< Back to games"
+  status:
+    ready: Ready.
+    installing: "Installing %{title}…"
+    installed: "Installed: %{path}"
+    install_failed: "Install failed: %{message}"
+    install_cancelled: Install cancelled
+    launched: "Launched %{path}"
+    launch_failed: "Launch failed: %{message}"
+    opened_folder: "Opened %{path}"
+    no_file_manager: No file manager available
+    confirm_delete_status: "Confirm to delete %{path} (the original game copy is kept)"
+    removed: "Removed %{path} (original game copy untouched)"
+    delete_failed: "Delete failed: %{message}"
+    disappeared: "%{path} disappeared — removed from the list"
+    refreshed: List refreshed
+    locale_saved: "Language saved: %{name}"
+  games:
+    soc:
+      title: "S.T.A.L.K.E.R.: Shadow of Chernobyl"
+      notes: "Not an officially supported engine platform yet, but it runs (see OpenXRay issue #392). Configs and scripts come from the .db archives; only gamedata/config/openxray.ltx is overlaid."
+    cs:
+      title: "S.T.A.L.K.E.R.: Clear Sky"
+      notes: "The engine has a -cs mode, but it is untested. Treated like CoP: unpacked folders are linked, .db archives root-scanned."
+    cop:
+      title: "S.T.A.L.K.E.R.: Call of Pripyat"
+      notes: "The engine's native platform. GOG/Steam installs ship unpacked levels/resources/localization/mp/patches plus gamedata/configs+scripts; all of it is linked and the engine's updated scripts are overlaid on top."
+  about:
+    text: "OpenXRayLauncher %{version} — assemble and run S.T.A.L.K.E.R. distributions on OpenXRay.\nhttps://github.com/OpenXRay/xray-16 — see LAUNCHER.md"
+  errors:
+    unknown_game: "unknown game %{game} (soc|cs|cop)"
+    source_not_found: directory does not exist
+    source_soc_none: "no gamedata.db* archives found (expected the GOG/Steam SoC root with gamedata.db0 … gamedata.dbd)"
+    source_cs_none: no levels/ or resources/ folders and no *.db archives found
+    source_cop_none: "no levels/ or resources/ folders and no gamedata.db* archives found (expected the GOG/Steam CoP root)"
+    engine_prefix: "game source: %{message}"
+    engine_no_binaries: "engine folder: no OpenXRay binaries found (expected a xray-16 checkout, its bin/x86_64/Release, or an installed prefix)"
+    engine_no_res: "engine folder: no binaries to link in %{dir}"
+    engine_missing_binaries: no OpenXRay binaries found in %{dir}
+    engine_no_res_gamedata: "binaries found, but no res/gamedata — GL shaders will be missing"
+    target_exists: "target %{path} already exists"
+    target_not_empty: "target %{path} is not empty"
+    target_root: "refusing to install into %{path}"
+    parent_missing: "parent folder %{path} does not exist"
+    target_empty: install folder is empty
+    no_game_data: "no game data found in %{source}"
+    exe_missing: "%{exe} not found — reinstall the game"
+    no_marker: "%{path} is not a launcher install (no .installed_ok) — refusing to delete"
+    refuse_root: refusing to delete filesystem root
+  cli:
+    no_installs: "no installs yet — run: xr-launcher install <soc|cs|cop> --engine DIR --source DIR --dir DIR"
+    launched: "launched %{path}"
+  install:
+    creating: "-> creating %{path}"
+    bin_linked: "   bin/: %{count} engine files"
+    assets_linked: "   game data: %{count} entries symlinked"
+    shaders_linked: "   gamedata/shaders/gl: linked to engine"
+    shaders_missing: "   WARNING: engine has no res/gamedata — GL shaders missing"
+    openxray_written: "   gamedata/%{dir}/openxray.ltx: game_mode = %{mode}"
+    fsgame_written: "   fsgame.ltx written"
+    appdata_created: "   _appdata_/{savedgames,logs,screenshots} created"
+    marker_written: "   .installed_ok written"
+    done: "installed %{title} -> %{path}"
+    failed_rollback: "FAILED: %{message} — rolling back"
+    removing: "-> removing %{path}"
+    removed: "removed %{path}"

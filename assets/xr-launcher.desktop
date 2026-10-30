@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OpenXRay Launcher
+Comment=Assemble and run S.T.A.L.K.E.R. on OpenXRay
+TryExec=xr-launcher
+Exec=xr-launcher
+Icon=xr-launcher
+Categories=Game;
+Terminal=false
