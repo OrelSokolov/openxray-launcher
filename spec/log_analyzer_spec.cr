@@ -73,4 +73,22 @@ describe Launcher::LogAnalyzer do
       empty.files.should be_empty
     end
   end
+
+  it "clears log files so the next report starts fresh" do
+    with_tmp do |root|
+      install = fake_install_with_logs(root)
+
+      Launcher::LogAnalyzer.clear(install).should eq(3) # .log/.bkp only
+      Launcher::LogAnalyzer.scan(install).tap do |report|
+        report.files.should be_empty
+        report.lines.should eq(0)
+        report.problems?.should be_false
+      end
+      # notes.txt is not a log — it must survive the clear.
+      Dir.children(File.join(root, "cop", "_appdata_", "logs")).should eq(["notes.txt"])
+
+      # Clearing an empty (or missing) dir is a no-op, not an error.
+      Launcher::LogAnalyzer.clear_dir(File.join(root, "nowhere")).should eq(0)
+    end
+  end
 end

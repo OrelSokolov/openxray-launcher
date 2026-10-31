@@ -68,15 +68,32 @@ module Launcher
       report = Report.new
       return report unless Dir.exists?(log_dir)
 
+      log_files(log_dir).sort!.each do |name|
+        report.files << name
+        scan_file(File.join(log_dir, name), report)
+      end
+      report
+    end
+
+    # Delete every scanned log file (*.log / *.bkp) so the next run —
+    # and the report built from it — starts fresh instead of mixing in
+    # problems from old runs. Returns the number of files removed.
+    def self.clear(install : Store::Install) : Int32
+      clear_dir(File.join(install.path, "_appdata_", "logs"))
+    end
+
+    def self.clear_dir(log_dir : String) : Int32
+      return 0 unless Dir.exists?(log_dir)
+      names = log_files(log_dir)
+      names.each { |name| File.delete(File.join(log_dir, name)) }
+      names.size
+    end
+
+    private def self.log_files(log_dir : String) : Array(String)
       Dir.children(log_dir).select { |name|
         File.file?(File.join(log_dir, name)) &&
           (name.downcase.ends_with?(".log") || name.downcase.ends_with?(".bkp"))
-      }.sort!.each do |name|
-        path = File.join(log_dir, name)
-        report.files << name
-        scan_file(path, report)
-      end
-      report
+      }
     end
 
     private def self.scan_file(path : String, report : Report) : Nil

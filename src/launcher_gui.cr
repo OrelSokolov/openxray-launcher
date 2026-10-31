@@ -429,6 +429,19 @@ module Launcher
           Egui::SystemPorts::Clipboard.text = md
           @status = L.t("status.report_copied")
         end
+        if logs.confirm_clear?
+          if icon_button(h, L.t("logs.confirm_clear"),
+              Egui::Icon.from_file(:lucide, :trash, tint: fg)).clicked?
+            do_clear_logs(logs)
+          end
+          if icon_button(h, L.t("logs.cancel"),
+              Egui::Icon.from_file(:lucide, :x, tint: fg)).clicked?
+            logs.confirm_clear = false
+          end
+        elsif icon_button(h, L.t("logs.clear"),
+            Egui::Icon.from_file(:lucide, :trash, tint: fg)).clicked?
+          logs.confirm_clear = true
+        end
         if icon_button(h, L.t("logs.back"),
             Egui::Icon.from_file(:lucide, :arrow_left, tint: fg)).clicked?
           @logs = nil
@@ -443,6 +456,20 @@ module Launcher
           s.markdown(md, id: "logs-report")
         end
       end
+    end
+
+    private def do_clear_logs(logs : LogsState) : Nil
+      begin
+        n = LogAnalyzer.clear(logs.install)
+        # The old report describes deleted files — drop it, the next
+        # Analyze rebuilds it from whatever the next run produces.
+        logs.report = nil
+        logs.markdown = nil
+        @status = L.t("status.logs_cleared", n: n)
+      rescue ex : File::Error
+        @status = L.t("status.delete_failed", message: ex.message)
+      end
+      logs.confirm_clear = false
     end
 
     private def finding_line(title : String, finding : LogAnalyzer::Finding) : String
@@ -757,6 +784,7 @@ module Launcher
       property install : Store::Install
       property report : LogAnalyzer::Report?
       property markdown : String?
+      property? confirm_clear : Bool = false
 
       def initialize(@install)
       end
