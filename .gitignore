@@ -1,4 +1,7 @@
 /lib/
 /bin/
 /.shards/
+/builds/
+/build/
+/crosspacks/
 *.dSYM/

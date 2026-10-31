@@ -25,13 +25,23 @@ rake all        # deps + native shims + release build -> bin/xr-launcher
 rake spec       # headless specs (no egui backend required)
 ```
 
-or via crosspack from the repo root:
+or via crosspack from this folder (`crosspack.yml`; every entry runs
+`rake deps` → `crystal spec` → `rake release`, so a build never ships
+with red specs):
 
 ```bash
-crosspack build launcher          # linux
+crosspack deps                    # verify/install this host's build deps
+crosspack build launcher          # linux/amd64
 crosspack build launcher-macos    # darwin/arm64
 crosspack build launcher-windows  # from an x64 Native Tools prompt
+crosspack pack ubuntu-25.10       # deb (also: debian-12, fedora-41 rpm,
+                                  # arch PKGBUILD, windows-11.0 MSI via WiX,
+                                  # macos .app) — output in crosspacks/
 ```
+
+Runtime library deps (GL/X11/libyaml/openssl, verified with `ldd`) are
+declared in the `deps:` section and land in the package metadata
+(`crosspack resolve <target>` prints the resolved Depends line).
 
 egui-cr's `shard.yml` pins one dependency to an SSH git URL;
 `shards.override.yml` in this folder reroutes it over https so plain
@@ -126,9 +136,13 @@ spec picks the new file up automatically.
 
 ## Launcher state
 
-- The install list lives only in the config (single source of truth);
-  saves are atomic (tmp + rename) and a corrupt config is backed up to
-  `launcher.json.corrupt` instead of being silently reset.
+- The install list lives only in the config (single source of truth; no
+  on-disk install markers). Saves are atomic (PID-suffixed tmp + rename)
+  and keep the previous config as `launcher.json.bak`; a corrupt config is
+  backed up to `launcher.json.corrupt` instead of being silently reset.
+- Only one launcher instance may run: an exclusive `flock` on
+  `<config_dir>/lock`; a second instance exits with an "already running"
+  error (localized) instead of racing over the config.
 - Index + recents:
   `~/.config/xr-launcher/launcher.json` (Linux) / `%APPDATA%\xr-launcher\`
   (Windows) / `~/Library/Application Support/xr-launcher/` (macOS).
@@ -175,12 +189,13 @@ a distro package substitute the prefix.
                            templates, source validation
   src/launcher/engine.cr   engine folder detection (checkout / bin dir /
                            installed prefix)
-  src/launcher/installer.cr  the assembler (symlinks, overlays, marker)
-  src/launcher/uninstaller.cr safe recursive delete (marker-gated,
+  src/launcher/installer.cr  the assembler (symlinks, overlays, config)
+  src/launcher/uninstaller.cr safe recursive delete (config-gated,
                              symlink-aware)
   src/launcher/runner.cr   detached launch with the right cwd + mode flag
   src/launcher/store.cr    JSON index of installs + locale setting
-  src/launcher/paths.cr    per-OS config dirs, marker name
+  src/launcher/single_instance.cr  flock guard: one launcher at a time
+  src/launcher/paths.cr    per-OS config dirs (spec-overridable)
   assets/launcher.exml     declarative UI: menu bar, settings page,
                            status bar (hot-reloads; embedded as a
                            compile-time fallback)

@@ -1,0 +1,261 @@
+# crosspack — cross-platform build + distribution for xr-launcher.
+#
+#   crosspack deps                    # verify/install this host's build deps
+#   crosspack build launcher          # linux/amd64  -> builds/
+#   crosspack build launcher-macos    # darwin/arm64 (Apple Silicon host)
+#   crosspack build launcher-windows  # windows/amd64 (x64 Native Tools prompt)
+#   crosspack pack <target>           # deb/rpm/PKGBUILD/MSI/.app from builds/
+#
+# The version follows shard.yml — bump both together.
+
+name: xr-launcher
+version: 1.0.0
+
+build:
+  output: builds
+
+  # Host-axis build dependencies: what the build machine needs.
+  # Host selectors: distro id from /etc/os-release, then ID_LIKE tokens
+  # (ubuntu hits the debian rule), then os, then "*".
+  deps:
+    crystal:
+      hosts:
+        debian:
+          verify: crystal --version
+          install: curl -fsSL https://crystal-lang.org/install.sh | sudo bash
+        fedora:
+          verify: crystal --version
+          install: sudo dnf install -y crystal
+        arch:
+          verify: crystal --version
+          install: sudo pacman -S --needed crystal
+        darwin:
+          verify: crystal --version
+          install: brew install crystal
+        "*":
+          verify: crystal --version
+
+    c-toolchain:
+      hosts:
+        windows:               # cl.exe via vcvars64 — see egui-cr's Rakefile#msvc
+          verify: cmd /c ""C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath | findstr /r .*"
+          install: winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+        debian:
+          verify: cc --version
+          install: sudo apt-get install -y build-essential
+        fedora:
+          verify: cc --version
+          install: sudo dnf groupinstall -y "Development Tools"
+        arch:
+          verify: cc --version
+          install: sudo pacman -S --needed base-devel
+        darwin:
+          verify: cc --version
+          install: xcode-select --install
+        "*":
+          verify: cc --version
+
+    gl-dev:
+      hosts:
+        windows:               # opengl32.lib ships with the Windows SDK (c-toolchain)
+          verify: cmd /c exit /b 0
+        darwin:                # OpenGL framework ships with macOS
+          verify: /usr/bin/true
+        debian:
+          verify: pkg-config --exists gl
+          install: sudo apt-get install -y libgl1-mesa-dev
+        fedora:
+          verify: pkg-config --exists gl
+          install: sudo dnf install -y mesa-libGL-devel
+        arch:
+          verify: pkg-config --exists gl
+          install: sudo pacman -S --needed mesa
+        "*":
+          verify: pkg-config --exists gl
+
+    x11-dev:
+      hosts:
+        windows:               # no X11 on Windows — sokol_app uses Win32/WGL
+          verify: cmd /c exit /b 0
+        darwin:                # no X11 on macOS — sokol_app uses Cocoa
+          verify: /usr/bin/true
+        debian:
+          verify: pkg-config --exists x11
+          install: sudo apt-get install -y libx11-dev
+        fedora:
+          verify: pkg-config --exists x11
+          install: sudo dnf install -y libX11-devel
+        arch:
+          verify: pkg-config --exists x11
+          install: sudo pacman -S --needed libx11
+        "*":
+          verify: pkg-config --exists x11
+
+    xcursor-dev:
+      hosts:
+        windows:               # cursors come from Win32 IDC_* stock cursors
+          verify: cmd /c exit /b 0
+        darwin:                # cursors come from NSCursor via the ObjC runtime
+          verify: /usr/bin/true
+        debian:
+          verify: pkg-config --exists xcursor
+          install: sudo apt-get install -y libxcursor-dev
+        fedora:
+          verify: pkg-config --exists xcursor
+          install: sudo dnf install -y libXcursor-devel
+        arch:
+          verify: pkg-config --exists xcursor
+          install: sudo pacman -S --needed libxcursor
+        "*":
+          verify: pkg-config --exists xcursor
+
+    xi-dev:
+      hosts:
+        windows:               # raw Win32 input via sokol_app
+          verify: cmd /c exit /b 0
+        darwin:                # NSEvent input via sokol_app
+          verify: /usr/bin/true
+        debian:
+          verify: pkg-config --exists xi
+          install: sudo apt-get install -y libxi-dev
+        fedora:
+          verify: pkg-config --exists xi
+          install: sudo dnf install -y libXi-devel
+        arch:
+          verify: pkg-config --exists xi
+          install: sudo pacman -S --needed libxi
+        "*":
+          verify: pkg-config --exists xi
+
+  # One entry per (host platform, goal): the entry id doubles as the
+  # goal name, so `crosspack build launcher` builds only the Linux binary.
+  # Every entry reuses the Rakefile's field-tested path (deps -> spec ->
+# native shims -> release); the Rakefile picks the per-OS link flags.
+  matrix:
+    - id: launcher             # linux; `crosspack build launcher`
+      build: linux/amd64
+      steps:
+        - rake deps            # shards install (shards.override.yml reroutes the SSH git URL)
+        - crystal spec         # specs must pass — same gate as CI
+        - rake release         # native shims + release build -> bin/xr-launcher
+      artifacts:
+        from: bin
+        include: [xr-launcher]
+        to: [ubuntu-22.04, ubuntu-24.04, ubuntu-25.10, debian-12, fedora-41, arch]
+
+    - id: launcher-macos       # darwin/arm64 on Apple Silicon; `crosspack build launcher-macos`
+      build: darwin/arm64
+      steps:
+        - rake deps
+        - crystal spec
+        - rake release         # ObjC/Cocoa shims + frameworks -> bin/xr-launcher
+      artifacts:
+        from: bin
+        include: [xr-launcher]
+        to: [macos]
+
+    - id: launcher-windows     # windows-11.0 is crosspack's fixed Windows host
+      build: windows/amd64     # target (every mingw/mswin Ruby reports 11.0)
+      steps:
+        - rake deps
+        - crystal spec
+        - rake release         # cl.exe shims -> bin/xr-launcher.exe
+      artifacts:
+        from: bin
+        include: [xr-launcher.exe, "*.dll"]   # Crystal may drop runtime DLLs next to exes
+        to: [windows-11.0]
+        mode: copy             # symlinks need dev-mode/admin on Windows
+
+package:
+  maintainer: xr-launcher developers
+  summary: xr-launcher - universal OpenXRay game installer/launcher
+  description: |-
+    Universal OpenXRay game launcher/installer: assembles a playable
+    S.T.A.L.K.E.R. distribution (engine binaries + symlinked game data +
+    per-game fsgame.ltx + openxray.ltx game mode) from an owned game copy
+    and an OpenXRay build. GUI on egui-cr, headless CLI included.
+  license: Multiple           # same as the engine sources (see ../License.txt)
+  sources: builds
+  prefix: usr/local
+
+  payload:
+    # Common key stays extension-less and resolves to the real file name
+    # per target. If the Windows toolchain drops runtime DLLs next to the
+    # exe (gc.dll and friends), add them here with a `windows:` selector.
+    xr-launcher:
+      windows: xr-launcher.exe
+      "*": xr-launcher
+
+  executables: [xr-launcher]
+  links:
+    bin/xr-launcher: ../lib/xr-launcher/xr-launcher
+
+  desktop:
+    name: OpenXRay Launcher
+    comment: Assemble and run S.T.A.L.K.E.R. on OpenXRay
+    categories: Game;
+
+  icon: assets/icons/launcher.png
+
+# Runtime-axis dependencies: shared libraries the binary links at run
+# time (verified with ldd on the Linux build: GL, X11/Xcursor/Xi/Xext,
+# libyaml for the embedded i18n catalogs, openssl from the Crystal
+# stdlib). Fonts are the pure-Crystal FreeType port — no libfreetype.
+deps:
+  version: 1
+  libgl:
+    targets:
+      debian: { "*": [libgl1] }
+      ubuntu: { "*": [libgl1] }
+      fedora: { "*": [libgl] }
+      arch: { "*": [libglvnd] }
+      macos: system           # OpenGL framework
+      windows: system         # opengl32.dll ships with the OS
+  libx11:
+    targets:
+      debian: { "*": [libx11-6] }
+      ubuntu: { "*": [libx11-6] }
+      fedora: { "*": [libX11] }
+      arch: { "*": [libx11] }
+      macos: none             # Cocoa, not X11
+      windows: none           # Win32/WGL
+  libxcursor:
+    targets:
+      debian: { "*": [libxcursor1] }
+      ubuntu: { "*": [libxcursor1] }
+      fedora: { "*": [libXcursor] }
+      arch: { "*": [libxcursor] }
+      macos: none             # NSCursor via the ObjC runtime
+      windows: none           # Win32 IDC_* stock cursors
+  libxi:
+    targets:
+      debian: { "*": [libxi6] }
+      ubuntu: { "*": [libxi6] }
+      fedora: { "*": [libXi] }
+      arch: { "*": [libxi] }
+      macos: none             # NSEvent input
+      windows: none           # raw Win32 input
+  libxext:
+    targets:
+      debian: { "*": [libxext6] }
+      ubuntu: { "*": [libxext6] }
+      fedora: { "*": [libXext] }
+      arch: { "*": [libxext] }
+      macos: none
+      windows: none
+  libyaml:
+    targets:
+      debian: { "*": [libyaml-0-2] }
+      ubuntu: { "*": [libyaml-0-2] }
+      fedora: { "*": [libyaml] }
+      arch: { "*": [libyaml] }
+      macos: system           # pulled in by brew's crystal formula
+      windows: bundled        # linked into Crystal windows-msvc binaries
+  libssl:
+    targets:
+      debian: { "*": [libssl3] }
+      ubuntu: { "22.04": [libssl3], "*": [libssl3t64] }
+      fedora: { "*": [openssl-libs] }
+      arch: { "*": [openssl] }
+      macos: system
+      windows: system         # schannel
