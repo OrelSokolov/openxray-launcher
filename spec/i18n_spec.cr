@@ -12,7 +12,8 @@ REQUIRED_KEYS = [
   # home
   "home.experimental", "home.not_installed", "home.installs_count",
   "home.installs_count_one", "home.no_installs", "home.install_button",
-  "home.created_line", "home.run", "home.open_folder", "home.delete",
+  "home.add_more", "home.created_line", "home.run", "home.open_folder",
+  "home.delete",
   "home.confirm_delete", "home.cancel",
   # wizard
   "wizard.step_of", "wizard.steps.engine", "wizard.steps.source",
@@ -23,13 +24,13 @@ REQUIRED_KEYS = [
   "wizard.cancel",
   # settings
   "settings.title", "settings.language", "settings.language_note",
-  "settings.store_line", "settings.back",
+  "settings.store_line",
   # status
   "status.ready", "status.installing", "status.installed",
   "status.install_failed", "status.install_cancelled", "status.launched",
   "status.launch_failed", "status.opened_folder", "status.no_file_manager",
   "status.confirm_delete_status", "status.removed", "status.delete_failed",
-  "status.disappeared", "status.refreshed", "status.locale_saved",
+  "status.refreshed", "status.locale_saved",
   # games
   "games.soc.title", "games.soc.notes", "games.cs.title", "games.cs.notes",
   "games.cop.title", "games.cop.notes",
@@ -76,15 +77,15 @@ describe Launcher::Locale do
   end
 
   it "interpolates %{params} in the pre-init fallback" do
-    Launcher::L.t("install.bin_linked", count: 7).should contain("7")
+    Launcher::L.t("install.bin_linked", n: 7).should contain("7")
   end
 
   it "translates through i18n after init and switches locales" do
     Launcher::Locale.init("ru")
     Launcher::Locale.initialized?.should be_true
-    Launcher::L.t("home.run").should eq("Запустить")
+    Launcher::L.t("home.run").should eq("Играть")
     Launcher::Locale.init("en")
-    Launcher::L.t("home.run").should eq("Run")
+    Launcher::L.t("home.run").should eq("Play")
     Launcher::Locale.set("ru")
     Launcher::L.t("status.ready").should eq("Готово.")
     Launcher::Locale.set("en")
@@ -93,6 +94,18 @@ describe Launcher::Locale do
   it "keeps unknown keys readable" do
     Launcher::Locale.init("en")
     Launcher::L.t("no.such.key").should eq("no.such.key")
+  end
+
+  it "does not trigger pluralization for numeric params (count: would)" do
+    # Regression: a param literally named `count` makes crystal-i18n
+    # look up `key.one`/`key.other` plural sub-keys — the flat keys
+    # then render as "translation missing". Numeric params are `n:`.
+    Launcher::Locale.init("en")
+    Launcher::L.t("home.installs_count", n: 3).should eq("3 installs")
+    Launcher::L.t("home.installs_count_one", n: 1).should eq("1 install")
+    Launcher::Locale.set("ru")
+    Launcher::L.t("home.installs_count", n: 2).should eq("установок: 2")
+    Launcher::Locale.set("en")
   end
 
   it "detects the locale from the environment" do

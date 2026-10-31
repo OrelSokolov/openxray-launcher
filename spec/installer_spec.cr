@@ -50,12 +50,6 @@ describe Launcher::Installer do
         Dir.exists?(File.join(target, "_appdata_", sub)).should be_true
       end
 
-      # marker is valid JSON with provenance
-      marker = JSON.parse(File.read(File.join(target, Launcher::Paths::MARKER_NAME)))
-      marker["game"].as_s.should eq("soc")
-      marker["engine"].as_s.should eq(engine)
-      marker["source"].as_s.should eq(source)
-
       # store registered + recents updated
       store.installs.size.should eq(1)
       store.recent_sources["soc"].should eq(source)
@@ -148,12 +142,12 @@ describe Launcher::Uninstaller do
     end
   end
 
-  it "refuses to delete folders without the marker" do
+  it "refuses to delete folders not registered in the config" do
     with_tmp do |dir|
       innocent = File.join(dir, "some-folder"); Dir.mkdir(innocent)
       File.write(File.join(innocent, "file"), "x")
       expect_raises(Launcher::Uninstaller::UnsafeDeleteError) do
-        Launcher::Uninstaller.remove(innocent) { |_| }
+        Launcher::Uninstaller.remove(innocent, Launcher::Store.new) { |_| }
       end
       Dir.exists?(innocent).should be_true
     end
@@ -163,12 +157,15 @@ describe Launcher::Uninstaller do
     with_tmp do |dir|
       precious = File.join(dir, "precious"); Dir.mkdir(precious)
       File.write(File.join(precious, "data"), "x")
-      marked = File.join(dir, "marked"); Dir.mkdir(marked)
-      File.symlink(precious, File.join(marked, "link"))
-      File.write(File.join(marked, Launcher::Paths::MARKER_NAME), "{}")
+      install_dir = File.join(dir, "my-install"); Dir.mkdir(install_dir)
+      File.symlink(precious, File.join(install_dir, "link"))
+      store = Launcher::Store.new
+      store.add_install(Launcher::Store::Install.new(
+        id: "soc-1", game: "soc", path: install_dir, engine: "e", source: "s", created_at: "t"))
 
-      Launcher::Uninstaller.remove(marked) { |_| }
-      Dir.exists?(marked).should be_false
+      Launcher::Uninstaller.remove(install_dir, store) { |_| }
+      Dir.exists?(install_dir).should be_false
+      store.installs.should be_empty
       File.exists?(File.join(precious, "data")).should be_true
     end
   end

@@ -30,21 +30,108 @@ describe Launcher::Store do
     end
   end
 
-  it "indexes installs per game and prunes dead ones" do
+  it "indexes installs per game" do
     with_tmp do |dir|
       store = Launcher::Store.new
-      live = File.join(dir, "live"); Dir.mkdir(live)
-      File.write(File.join(live, Launcher::Paths::MARKER_NAME), "{}")
       store.add_install(Launcher::Store::Install.new(
-        id: "soc-1", game: "soc", path: live, engine: "e", source: "s", created_at: "t"))
+        id: "soc-1", game: "soc", path: File.join(dir, "a"), engine: "e", source: "s", created_at: "t"))
       store.add_install(Launcher::Store::Install.new(
-        id: "cop-1", game: "cop", path: File.join(dir, "gone"), engine: "e", source: "s", created_at: "t"))
+        id: "cop-1", game: "cop", path: File.join(dir, "b"), engine: "e", source: "s", created_at: "t"))
 
       store.for_game("soc").size.should eq(1)
       store.for_game("cop").size.should eq(1)
-      store.prune!.map(&.id).should eq(["cop-1"])
-      store.for_game("cop").should be_empty
-      store.for_game("soc").size.should eq(1)
+      store.find_by_path(File.join(dir, "b")).try(&.id).should eq("cop-1")
+
+      store.remove_install(File.join(dir, "a"))
+      store.for_game("soc").should be_empty
+      store.for_game("cop").size.should eq(1)
+    end
+  end
+
+  it "marks and round-trips modified-game installs" do
+    with_tmp do |dir|
+      path = File.join(dir, "store.json")
+      store = Launcher::Store.new
+      store.add_install(Launcher::Store::Install.new(
+        id: "soc-1", game: "soc", path: File.join(dir, "a"), engine: "e", source: "s",
+        created_at: "t"))
+      store.add_install(Launcher::Store::Install.new(
+        id: "soc-2", game: "soc", path: File.join(dir, "b"), engine: "e", source: "s",
+        created_at: "t", custom: true))
+      store.save(path)
+
+      # entries created before the flag exist deserialize with custom=false
+      loaded = Launcher::Store.load(path)
+      loaded.installs.size.should eq(2)
+      loaded.custom_installs.size.should eq(1)
+      loaded.custom_installs.first.path.should eq(File.join(dir, "b"))
+      # the custom entry is still a runnable soc install (compat mode)
+      loaded.for_game("soc").size.should eq(2)
+      # a config written before the feature existed loads with no flag
+      legacy = %({"version":1,"installs":[{"id":"x","game":"cop","path":"/x","engine":"e","source":"s","created_at":"t"}]})
+      File.write(path, legacy)
+      Launcher::Store.load(path).installs.first.custom?.should be_false
+    end
+  end
+
+  it "replaces an install at the same path on add" do
+    with_tmp do |dir|
+      store = Launcher::Store.new
+      store.add_install(Launcher::Store::Install.new(
+        id: "soc-1", game: "soc", path: "/x", engine: "e", source: "s", created_at: "t"))
+      store.add_install(Launcher::Store::Install.new(
+        id: "soc-2", game: "soc", path: "/x", engine: "e2", source: "s2", created_at: "t2"))
+      store.installs.size.should eq(1)
+      store.installs.first.id.should eq("soc-2")
+    end
+  end
+
+  it "backs up a corrupt config instead of wiping it" do
+    with_tmp do |dir|
+      path = File.join(dir, "store.json")
+      File.write(path, "{ not json")
+
+      loaded = Launcher::Store.load(path)
+      loaded.installs.should be_empty
+
+      # the corrupt original survives as a backup — recoverable by hand
+      File.exists?("#{path}.corrupt").should be_true
+      # and an empty in-memory store does not clobber the backup
+      loaded.save(path)
+      File.exists?("#{path}.corrupt").should be_true
+    end
+  end
+
+  it "saves atomically and keeps the previous config as .bak" do
+    with_tmp do |dir|
+      path = File.join(dir, "store.json")
+      store = Launcher::Store.new
+      store.recent_engine = "/first"
+      store.save(path)
+
+      store.recent_engine = "/second"
+      store.save(path)
+
+      File.exists?(path).should be_true
+      File.exists?("#{path}.tmp.#{Process.pid}").should be_false
+      # the previous good content survives in the backup
+      Launcher::Store.load("#{path}.bak").recent_engine.should eq("/first")
+      Launcher::Store.load(path).recent_engine.should eq("/second")
+    end
+  end
+
+  it "allows only one single-instance lock holder" do
+    with_tmp do |dir|
+      Dir.mkdir(File.join(dir, "cfg"))
+      Launcher::Paths.stub_config_dir(File.join(dir, "cfg")) do
+        Launcher::SingleInstance.acquire!
+        expect_raises(Launcher::SingleInstance::AlreadyRunning) do
+          Launcher::SingleInstance.acquire!
+        end
+        Launcher::SingleInstance.release
+        Launcher::SingleInstance.acquire! # re-acquirable after release
+        Launcher::SingleInstance.release
+      end
     end
   end
 end

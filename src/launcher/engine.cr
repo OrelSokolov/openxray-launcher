@@ -51,8 +51,11 @@ module Launcher
         if res_gamedata_at?(File.join(root, "res"))
           return Location.new(dir, File.join(root, "res", "gamedata"), :bindir)
         end
-        # bare binaries: usable, but no GL shaders -> renderer will be broken.
-        # Still resolve (the install itself succeeds); the UI warns.
+        # bare binaries: no GL shaders -> renderer will be broken. Still
+        # resolve: the installer tolerates this (logs a shaders-missing
+        # warning), but the wizard blocks the step with a validation
+        # error, so installs only reach here without res/gamedata via the
+        # installer API or a race after the wizard check.
         return Location.new(dir, "", :bindir)
       end
 

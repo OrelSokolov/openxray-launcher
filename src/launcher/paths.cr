@@ -2,12 +2,12 @@
 
 module Launcher
   module Paths
-    MARKER_NAME = ".installed_ok"
+    @@override : String? = nil # spec seam — never set in production code
 
     # Directory holding launcher.json. XDG on Linux/BSD, %APPDATA% on
     # Windows, Application Support on macOS.
     def self.config_dir : String
-      dir = {% if flag?(:win32) %}
+      dir = @@override || {% if flag?(:win32) %}
         File.join(ENV["APPDATA"]? || File.join(home, "AppData", "Roaming"), "xr-launcher")
       {% elsif flag?(:darwin) %}
         File.join(home, "Library", "Application Support", "xr-launcher")
@@ -16,6 +16,24 @@ module Launcher
       {% end %}
       Dir.mkdir_p(dir) unless Dir.exists?(dir)
       dir
+    end
+
+    # Redirect config_dir for the duration of a block (specs must not
+    # touch the real user config).
+    def self.stub_config_dir(dir : String, &)
+      previous = @@override
+      @@override = dir
+      yield
+    ensure
+      @@override = previous
+    end
+
+    # Permanent redirect for the whole process: spec_helper sets it so
+    # no spec can ever write the real user config — Installer and
+    # Uninstaller persist through `Store#save`'s default path
+    # (`Paths.store_path`), which the block-scoped stub cannot cover.
+    def self.config_dir=(dir : String?) : Nil
+      @@override = dir
     end
 
     def self.store_path : String

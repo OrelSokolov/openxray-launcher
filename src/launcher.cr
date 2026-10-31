@@ -5,20 +5,30 @@
 # and the CLI compile without the native UI backend.
 
 require "option_parser"
-require "./launcher/i18n"
 require "./launcher/catalog"
+require "./launcher/i18n"
+require "./launcher/single_instance"
 require "./launcher/paths"
 require "./launcher/store"
 require "./launcher/engine"
 require "./launcher/installer"
 require "./launcher/uninstaller"
 require "./launcher/runner"
+require "./launcher/log_analyzer"
 
 module Launcher
   VERSION = "1.0.0"
 
   def self.printer(stream : IO = STDOUT) : String -> Nil
     ->(line : String) { stream.puts(line); stream.flush }
+  end
+
+  # Writer commands must not race a running GUI instance (last writer
+  # wins on the config) — grab the single-instance lock first.
+  private def self.guard_single_instance : Nil
+    SingleInstance.acquire!
+  rescue SingleInstance::AlreadyRunning
+    abort(L.t("errors.already_running"))
   end
 
   def self.cli(args : Array(String)) : Int32
@@ -29,7 +39,6 @@ module Launcher
     case command
     when "list"
       store = Store.load
-      store.prune!
       if store.installs.empty?
         puts L.t("cli.no_installs")
       else
@@ -40,6 +49,7 @@ module Launcher
       end
       0
     when "install"
+      guard_single_instance
       game_id = args[1]? || abort("usage: xr-launcher install <soc|cs|cop> --engine DIR --source DIR --dir DIR")
       game = Catalog[game_id]? || abort(L.t("errors.unknown_game", game: game_id))
       engine = source = target = ""
@@ -68,6 +78,7 @@ module Launcher
       puts L.t("cli.launched", path: install.path)
       0
     when "remove"
+      guard_single_instance
       path = args[1]? || abort("usage: xr-launcher remove <install-dir>")
       Uninstaller.remove(File.expand_path(path), Store.load, &log)
       0

@@ -1,9 +1,9 @@
 # The launcher's JSON state: registered installs (one entry per created
 # distribution) plus recently used engine/source paths for the wizard.
 #
-# The in-install `.installed_ok` marker (written by the installer) is the
-# on-disk truth; the store is the index. On load, entries whose marker is
-# gone are dropped (the user deleted the folder manually).
+# The single source of truth for installed distributions: save() is
+# atomic (tmp + rename) and a corrupt file is backed up, never silently
+# overwritten with an empty list.
 
 require "json"
 
@@ -13,13 +13,16 @@ module Launcher
       include JSON::Serializable
 
       getter id : String        # "<game>-<epoch>" unique per install
-      getter game : String      # Catalog game id
+      getter game : String      # Catalog game id (for a custom install: the chosen compatibility mode)
       getter path : String      # install root (contains fsgame.ltx, bin/, ...)
       getter engine : String    # engine root passed at install time
       getter source : String    # original game copy passed at install time
       getter created_at : String
+      # true: a modified game install (compat mode picked in the wizard);
+      # absent in configs written before the feature — defaults to false
+      getter? custom : Bool = false
 
-      def initialize(@id, @game, @path, @engine, @source, @created_at)
+      def initialize(@id, @game, @path, @engine, @source, @created_at, @custom = false)
       end
     end
 
@@ -37,10 +40,15 @@ module Launcher
       return new unless File.exists?(path)
       from_json(File.read(path))
     rescue ex : JSON::Error | IO::Error
-      # A corrupt store must not brick the launcher — start empty (loud in
-      # the log, silent in the UI is fine here: the data is recreatable by
-      # re-installing; nothing game-owned is lost).
-      STDERR.puts "warning: could not read #{path} (#{ex.message}); starting empty"
+      # A corrupt store must not brick the launcher — but it must not
+      # be silently wiped either: back it up (a truncated write, a kill
+      # mid-save), say so LOUDLY, and start empty IN MEMORY only. No
+      # save happens until the user changes something, and the backup
+      # keeps the old installs recoverable by hand.
+      backup = "#{path}.corrupt"
+      File.rename(path, backup) rescue nil
+      STDERR.puts "warning: could not read #{path} (#{ex.message}); " \
+        "backed up to #{backup}, starting empty"
       new
     end
 
@@ -78,8 +86,19 @@ module Launcher
       end
     end
 
+    # Atomic + non-clobbering write:
+    #   * the temp file is per-PID — two processes saving at once never
+    #     write into the same tmp (a shared tmp name let interleaved
+    #     writes get renamed in as a corrupt config);
+    #   * the previous config is kept as `launcher.json.bak` — even a
+    #     buggy or stale writer leaves the last good list recoverable;
+    #   * rename is atomic — a crash leaves either the old or the new
+    #     file, never a truncated mix.
     def save(path : String = Paths.store_path) : Nil
-      File.write(path, to_pretty_json)
+      tmp = "#{path}.tmp.#{Process.pid}"
+      File.write(tmp, to_pretty_json)
+      File.copy(path, "#{path}.bak") if File.exists?(path)
+      File.rename(tmp, path)
     end
 
     def add_install(install : Install) : Nil
@@ -95,15 +114,14 @@ module Launcher
       installs.select { |i| i.game == game_id }
     end
 
-    def find_by_path(path : String) : Install?
-      installs.find { |i| i.path == path }
+    # Modified-game installs (any compatibility mode) — the "Modified
+    # game" sidebar entry lists these instead of the per-game pages.
+    def custom_installs : Array(Install)
+      installs.select(&.custom?)
     end
 
-    # Drop entries whose install dir no longer carries the marker file.
-    def prune! : Array(Install)
-      gone = installs.select { |i| !File.exists?(File.join(i.path, Paths::MARKER_NAME)) }
-      installs.reject! { |i| gone.includes?(i) }
-      gone
+    def find_by_path(path : String) : Install?
+      installs.find { |i| i.path == path }
     end
 
     def self.next_id(game_id : String) : String

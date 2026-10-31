@@ -4,7 +4,6 @@
 #   <dir>/                     install root; xr_3da is started with cwd here,
 #     fsgame.ltx               per-game FS layout (portable mode: the engine
 #                              picks fsgame.ltx from the working directory)
-#     .installed_ok            JSON marker: install provenance + validity
 #     bin/                     per-file symlinks to the engine build
 #     gamedata/
 #       shaders/gl -> engine   GL shader pack (mandatory on OpenGL builds)
@@ -21,11 +20,9 @@
 # unpacked assets stay in the original copy and are referenced by symlink
 # (Windows without symlink privileges falls back to copying).
 
-require "json"
 require "./catalog"
 require "./i18n"
 require "./engine"
-require "./paths"
 require "./store"
 
 module Launcher
@@ -36,7 +33,7 @@ module Launcher
     VERSION = 1
 
     def self.install(game : Catalog::Game, source : String, engine_dir : String,
-                     target : String, store : Store? = nil,
+                     target : String, store : Store? = nil, custom : Bool = false,
                      &log : String -> Nil) : Store::Install
       source = File.expand_path(source)
       engine_dir = File.expand_path(engine_dir)
@@ -70,7 +67,7 @@ module Launcher
           linked += 1
         end
         raise InstallError.new(L.t("errors.engine_no_res", dir: engine.bin_dir)) if linked.zero?
-        log.call(L.t("install.bin_linked", count: linked))
+        log.call(L.t("install.bin_linked", n: linked))
 
         # 2. game data at the install root (symlinks into the original copy)
         assets = 0
@@ -93,7 +90,7 @@ module Launcher
           end
         end
         raise InstallError.new(L.t("errors.no_game_data", source: source)) if assets.zero?
-        log.call(L.t("install.assets_linked", count: assets))
+        log.call(L.t("install.assets_linked", n: assets))
 
         # 3. gamedata overlay
         gamedata = File.join(target, "gamedata")
@@ -146,22 +143,24 @@ module Launcher
         end
         log.call(L.t("install.appdata_created"))
 
-        # 6. marker + store registration
+        # 6. store registration — the install list lives in the
+        # launcher config, nothing is written inside the install dir
         install = Store::Install.new(
           id: Store.next_id(game.id),
           game: game.id,
           path: target,
           engine: engine_dir,
           source: source,
-          created_at: Time.local.to_rfc3339
+          created_at: Time.local.to_rfc3339,
+          custom: custom
         )
-        File.write(File.join(target, Paths::MARKER_NAME), marker_json(install))
-        log.call(L.t("install.marker_written"))
 
         if store
           store.add_install(install)
           store.recent_engine = engine_dir
-          store.recent_sources[game.id] = source
+          # a custom install recalls its source under the shared "mod"
+          # key — the mod wizard prefills from there, not per-game
+          store.recent_sources[custom ? "mod" : game.id] = source
           store.save
         end
         log.call(L.t("install.done", title: game.title, path: target))
@@ -173,18 +172,6 @@ module Launcher
         log.call(L.t("install.failed_rollback", message: ex.message))
         Uninstaller.remove_dir(target)
         raise ex
-      end
-    end
-
-    def self.marker_json(install : Store::Install) : String
-      JSON.build do |json|
-        json.object do
-          json.field "launcher_version", VERSION
-          json.field "game", install.game
-          json.field "engine", install.engine
-          json.field "source", install.source
-          json.field "created_at", install.created_at
-        end
       end
     end
 

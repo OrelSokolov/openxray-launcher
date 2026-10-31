@@ -41,20 +41,18 @@
     <use partial="status_panel"/>
   </page>
 
+  <!-- Settings is a full page like the notepad's: the menu bar stays on
+       the home page (it disappears here), and the page header carries
+       the round back button (armed by the router when the stack is
+       deeper than one). -->
   <page id="root/settings" title="{settings_title}">
-    <use partial="app_menu"/>
-    <central>
-      <heading text="{settings_title}"/>
-      <label text="{settings_language}"/>
-      <combo bind="locale_display" options="English,Русский" on_change="locale_changed"/>
-      <separator/>
-      <label text="{settings_language_note}"/>
-      <separator/>
-      <label text="{settings_store_line}"/>
-      <separator/>
-      <button text="{settings_back}" on_click="back"/>
-    </central>
-    <use partial="status_panel"/>
+    <heading text="{settings_title}"/>
+    <label text="{settings_language}"/>
+    <combo bind="locale_display" options="English,Русский" on_change="locale_changed"/>
+    <separator/>
+    <label text="{settings_language_note}"/>
+    <separator/>
+    <label text="{settings_store_line}"/>
   </page>
 
   <modal id="root/about" title="{about_title}"

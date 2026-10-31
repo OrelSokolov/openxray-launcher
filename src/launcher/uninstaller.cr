@@ -1,10 +1,10 @@
 # Removal of a launcher-created distribution. Two invariants:
-#   1. never touch anything outside the install dir (verified by the
-#      `.installed_ok` marker — no marker, no delete);
+#   1. only folders REGISTERED in the launcher config are deleted (the
+#      config's install list is the single source of truth — an
+#      arbitrary path is refused, loudly);
 #   2. never follow symlinks while deleting — game data archives stay
 #      in the original copy the symlinks point at.
 
-require "./paths"
 require "./i18n"
 require "./store"
 
@@ -13,15 +13,15 @@ module Launcher
     class UnsafeDeleteError < Exception
     end
 
-    # Remove the launcher-created install at `path`, dropping it from the
-    # store. `path` must carry our marker; the original game copy and the
-    # engine folder are never modified.
-    def self.remove(path : String, store : Store? = nil,
+    # Remove the launcher install at `path`, dropping it from the store.
+    # `path` must be a registered install; the original game copy and
+    # the engine folder are never modified.
+    def self.remove(path : String, store : Store?,
                     &log : String -> Nil) : Nil
       path = File.expand_path(path)
-      marker = File.join(path, Paths::MARKER_NAME)
 
-      raise UnsafeDeleteError.new(L.t("errors.no_marker", path: path)) unless File.exists?(marker)
+      raise UnsafeDeleteError.new(L.t("errors.not_registered", path: path)) \
+        unless store && store.find_by_path(path)
       raise UnsafeDeleteError.new(L.t("errors.refuse_root")) if path == "/"
 
       log.call(L.t("install.removing", path: path))

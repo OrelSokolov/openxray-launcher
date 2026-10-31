@@ -15,12 +15,14 @@ ru:
   home:
     experimental: экспериментально — см. заметки ниже
     not_installed: не установлено
-    installs_count: "установок: %{count}"
-    installs_count_one: "установок: %{count}"
+    installs_count: "установок: %{n}"
+    installs_count_one: "установок: %{n}"
     no_installs: Для этой игры ещё нет установленного дистрибутива.
     install_button: "Установить %{title}…"
+    add_more: "Добавить ещё…"
     created_line: "создано %{created} · движок %{engine} · источник %{source}"
-    run: Запустить
+    run: Играть
+    logs: Логи
     open_folder: Открыть папку
     delete: Удалить
     confirm_delete: Подтвердить удаление (вместе с сохранениями!)
@@ -29,27 +31,47 @@ ru:
     step_of: "Шаг %{step} из %{total} — %{name}"
     steps:
       engine: Папка движка OpenXRay
+      mode: Режим совместимости
       source: Папка оригинальной игры
       target: Папка установки
     engine_intro: "Укажите сборку OpenXRay, на которой будете играть. Поддерживаются:"
     engine_layouts: "• checkout репозитория xray-16 (bin/x86_64/Release + res/)\n• сама папка bin/x86_64/Release\n• установленный префикс (lib/openxray + share/openxray)"
+    mode_intro: "Выберите режим совместимости движка, в котором запускать эту модифицированную игру:"
+    mode_note: "Режим задаёт флаг запуска (-shoc / -cs / -cop), game_mode в openxray.ltx и структуру файлов дистрибутива."
+    mode_selected_line: "%{title} — флаг запуска %{flag}, openxray.ltx game_mode = %{mode}"
     source_intro: "Укажите вашу лицензионную копию «%{title}» (папка GOG/Steam)."
+    source_intro_mod: "Укажите папку модифицированной игры — полную копию «%{title}» с установленным модом."
     source_note: Из неё ничего не изменяется и не копируется — игровые данные лишь подключаются симлинками в новый дистрибутив.
     target_intro: "Куда собрать дистрибутив (новая папка):"
     will_create: "Будет создано:"
-    will_create_body: "%{target}/\n  bin/ (движок) · fsgame.ltx · .installed_ok\n  gamedata/ (GL-шейдеры, openxray.ltx game_mode=%{mode}, оверлеи скриптов)\n  _appdata_/ (сохранения, логи) · симлинки на игровые данные -> оригинальная копия"
+    will_create_body: "%{target}/\n  bin/ (движок) · fsgame.ltx\n  gamedata/ (GL-шейдеры, openxray.ltx game_mode=%{mode}, оверлеи скриптов)\n  _appdata_/ (сохранения, логи) · симлинки на игровые данные -> оригинальная копия"
     browse: Обзор…
     ok: OK
     back: "< Назад"
     next: "Далее >"
     install: Установить
     cancel: Отмена
+  logs:
+    title: Логи и краши
+    dir_line: "Папка логов: %{path}"
+    analyze: Анализировать
+    copy_report: Скопировать отчёт
+    back: Назад
+    no_logs: "Файлов логов пока нет — сначала запустите игру."
+    files_line: "Просканировано логов: %{n} (строк: %{lines})"
+    verdict_ok: "Крашей не найдено."
+    verdict_bad: "Найдено крашей: %{n}"
+    crashes: краши
+    textures: отсутствующие текстуры
+    scripts: ошибки скриптов
+    warnings: прочие предупреждения
+    finding_ok: "%{title}: нет"
+    finding_bad: "%{title}: %{n}"
   settings:
     title: Настройки
     language: Язык интерфейса
     language_note: Язык интерфейса применяется сразу и сохраняется в конфиге лаунчера.
     store_line: "Конфиг лаунчера: %{path}"
-    back: "< Назад к играм"
   status:
     ready: Готово.
     installing: "Установка %{title}…"
@@ -63,9 +85,9 @@ ru:
     confirm_delete_status: "Подтвердите удаление %{path} (оригинальная копия игры останется нетронутой)"
     removed: "Удалено %{path} (оригинальная копия игры не тронута)"
     delete_failed: "Ошибка удаления: %{message}"
-    disappeared: "%{path} исчез — убран из списка"
     refreshed: Список обновлён
     locale_saved: "Язык сохранён: %{name}"
+    report_copied: Отчёт скопирован в буфер обмена
   games:
     soc:
       title: "S.T.A.L.K.E.R.: Тень Чернобыля"
@@ -76,6 +98,9 @@ ru:
     cop:
       title: "S.T.A.L.K.E.R.: Зов Припяти"
       notes: "Родная платформа движка. Копии GOG/Steam содержат распакованные levels/resources/localization/mp/patches и gamedata/configs+scripts; всё это подключается симлинками, обновлённые скрипты движка — оверлеем сверху."
+    mod:
+      title: Моды
+      notes: "Модифицированная копия игры (мод). Мастер установки спросит режим совместимости движка — soc, cs или cop — он задаёт флаг запуска, game_mode в openxray.ltx и структуру fsgame.ltx дистрибутива."
   about:
     text: "Лаунчер OpenXRay %{version} — сборка и запуск дистрибутивов S.T.A.L.K.E.R. на OpenXRay.\nhttps://github.com/OpenXRay/xray-16 — см. LAUNCHER.md"
   errors:
@@ -96,21 +121,21 @@ ru:
     target_empty: не указана папка установки
     no_game_data: "в %{source} нет игровых данных"
     exe_missing: "%{exe} не найден — переустановите игру"
-    no_marker: "%{path} — не установка лаунчера (нет .installed_ok) — удаление отклонено"
+    not_registered: "%{path} — не зарегистрированная установка лаунчера — удаление отклонено"
     refuse_root: "отказ: удаление корня файловой системы"
+    already_running: "уже запущен другой экземпляр xr-launcher — сначала закройте его"
   cli:
     no_installs: "пока нет установок — выполните: xr-launcher install <soc|cs|cop> --engine DIR --source DIR --dir DIR"
     launched: "запущено %{path}"
   install:
     creating: "-> создание %{path}"
-    bin_linked: "   bin/: файлов движка — %{count}"
-    assets_linked: "   игровые данные: симлинков — %{count}"
+    bin_linked: "   bin/: файлов движка — %{n}"
+    assets_linked: "   игровые данные: симлинков — %{n}"
     shaders_linked: "   gamedata/shaders/gl: подключено к движку"
     shaders_missing: "   ВНИМАНИЕ: у движка нет res/gamedata — GL-шейдеры отсутствуют"
     openxray_written: "   gamedata/%{dir}/openxray.ltx: game_mode = %{mode}"
     fsgame_written: "   fsgame.ltx записан"
     appdata_created: "   _appdata_/{savedgames,logs,screenshots} созданы"
-    marker_written: "   .installed_ok записан"
     done: "установлено: %{title} -> %{path}"
     failed_rollback: "ОШИБКА: %{message} — откат"
     removing: "-> удаление %{path}"

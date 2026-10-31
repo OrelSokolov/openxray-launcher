@@ -15,12 +15,14 @@ en:
   home:
     experimental: experimental — see notes below
     not_installed: not installed
-    installs_count: "%{count} installs"
-    installs_count_one: "%{count} install"
+    installs_count: "%{n} installs"
+    installs_count_one: "%{n} install"
     no_installs: No distribution installed for this game yet.
     install_button: "Install %{title}…"
+    add_more: "Add more…"
     created_line: "created %{created} · engine %{engine} · source %{source}"
-    run: Run
+    run: Play
+    logs: Logs
     open_folder: Open folder
     delete: Delete
     confirm_delete: Confirm delete (saves too!)
@@ -29,27 +31,47 @@ en:
     step_of: "Step %{step} of %{total} — %{name}"
     steps:
       engine: OpenXRay engine folder
+      mode: Compatibility mode
       source: Original game folder
       target: Install location
     engine_intro: "Point at the OpenXRay build to play on. Accepted layouts:"
     engine_layouts: "• a xray-16 checkout (bin/x86_64/Release + res/)\n• the bin/x86_64/Release folder itself\n• an installed prefix (lib/openxray + share/openxray)"
+    mode_intro: "Pick the engine compatibility mode this modified game runs in:"
+    mode_note: "The mode decides the launch flag (-shoc / -cs / -cop), game_mode in openxray.ltx and the file layout of the distribution."
+    mode_selected_line: "%{title} — launch flag %{flag}, openxray.ltx game_mode = %{mode}"
     source_intro: "Point at your owned install of %{title} (GOG/Steam folder)."
+    source_intro_mod: "Point at the modified game folder — a full copy of %{title} with the mod applied."
     source_note: Nothing is modified or copied from it — game data is only symlinked into the new distribution.
     target_intro: "Where to assemble the distribution (a new folder):"
     will_create: "Will create:"
-    will_create_body: "%{target}/\n  bin/ (engine) · fsgame.ltx · .installed_ok\n  gamedata/ (GL shaders, openxray.ltx game_mode=%{mode}, script overlays)\n  _appdata_/ (saves, logs) · game data symlinks -> original copy"
+    will_create_body: "%{target}/\n  bin/ (engine) · fsgame.ltx\n  gamedata/ (GL shaders, openxray.ltx game_mode=%{mode}, script overlays)\n  _appdata_/ (saves, logs) · game data symlinks -> original copy"
     browse: Browse…
     ok: OK
     back: "< Back"
     next: "Next >"
     install: Install
     cancel: Cancel
+  logs:
+    title: Logs & crashes
+    dir_line: "Log folder: %{path}"
+    analyze: Analyze
+    copy_report: Copy report
+    back: Back
+    no_logs: "No log files yet — run the game first."
+    files_line: "Scanned %{n} log files (%{lines} lines)"
+    verdict_ok: "No crashes found."
+    verdict_bad: "Crashes found: %{n}"
+    crashes: crashes
+    textures: missing textures
+    scripts: script errors
+    warnings: other warnings
+    finding_ok: "%{title}: none"
+    finding_bad: "%{title}: %{n}"
   settings:
     title: Settings
     language: Language
     language_note: The interface language applies immediately and is saved in the launcher config.
     store_line: "Launcher config: %{path}"
-    back: "< Back to games"
   status:
     ready: Ready.
     installing: "Installing %{title}…"
@@ -63,9 +85,9 @@ en:
     confirm_delete_status: "Confirm to delete %{path} (the original game copy is kept)"
     removed: "Removed %{path} (original game copy untouched)"
     delete_failed: "Delete failed: %{message}"
-    disappeared: "%{path} disappeared — removed from the list"
     refreshed: List refreshed
     locale_saved: "Language saved: %{name}"
+    report_copied: Report copied to clipboard
   games:
     soc:
       title: "S.T.A.L.K.E.R.: Shadow of Chernobyl"
@@ -76,6 +98,9 @@ en:
     cop:
       title: "S.T.A.L.K.E.R.: Call of Pripyat"
       notes: "The engine's native platform. GOG/Steam installs ship unpacked levels/resources/localization/mp/patches plus gamedata/configs+scripts; all of it is linked and the engine's updated scripts are overlaid on top."
+    mod:
+      title: Mods
+      notes: "A modified copy of a game (mod). The install wizard asks for the engine compatibility mode — soc, cs or cop — which sets the launch flag, game_mode in openxray.ltx and the fsgame.ltx layout of the distribution."
   about:
     text: "OpenXRayLauncher %{version} — assemble and run S.T.A.L.K.E.R. distributions on OpenXRay.\nhttps://github.com/OpenXRay/xray-16 — see LAUNCHER.md"
   errors:
@@ -96,21 +121,22 @@ en:
     target_empty: install folder is empty
     no_game_data: "no game data found in %{source}"
     exe_missing: "%{exe} not found — reinstall the game"
-    no_marker: "%{path} is not a launcher install (no .installed_ok) — refusing to delete"
+    not_registered: "%{path} is not a registered launcher install — refusing to delete"
     refuse_root: refusing to delete filesystem root
+    already_running: "another xr-launcher instance is already running — close it first"
+    already_running: "another xr-launcher instance is already running — close it first"
   cli:
     no_installs: "no installs yet — run: xr-launcher install <soc|cs|cop> --engine DIR --source DIR --dir DIR"
     launched: "launched %{path}"
   install:
     creating: "-> creating %{path}"
-    bin_linked: "   bin/: %{count} engine files"
-    assets_linked: "   game data: %{count} entries symlinked"
+    bin_linked: "   bin/: %{n} engine files"
+    assets_linked: "   game data: %{n} entries symlinked"
     shaders_linked: "   gamedata/shaders/gl: linked to engine"
     shaders_missing: "   WARNING: engine has no res/gamedata — GL shaders missing"
     openxray_written: "   gamedata/%{dir}/openxray.ltx: game_mode = %{mode}"
     fsgame_written: "   fsgame.ltx written"
     appdata_created: "   _appdata_/{savedgames,logs,screenshots} created"
-    marker_written: "   .installed_ok written"
     done: "installed %{title} -> %{path}"
     failed_rollback: "FAILED: %{message} — rolling back"
     removing: "-> removing %{path}"

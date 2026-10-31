@@ -2,6 +2,15 @@ require "spec"
 require "file_utils"
 require "../src/launcher"
 
+# Redirect the config dir for the WHOLE spec process, before any
+# example runs: Installer/Uninstaller auto-persist their store through
+# `Store#save`'s default path (`Paths.store_path`), so without this
+# every spec run overwrites the developer's real launcher.json.
+spec_config = File.join(Dir.tempdir, "xr-launcher-spec-cfg-#{Random.new.hex(8)}")
+Dir.mkdir(spec_config)
+Launcher::Paths.config_dir = spec_config
+Spec.after_suite { FileUtils.rm_rf(spec_config) }
+
 def with_tmp(& : String -> Nil) : Nil
   dir = File.join(Dir.tempdir, "xr-launcher-spec-#{Random.new.hex(8)}")
   Dir.mkdir(dir)

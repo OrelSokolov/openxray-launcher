@@ -47,8 +47,6 @@ and creates:
   bin/                 per-file symlinks to the engine build (xr_3da, *.so)
   fsgame.ltx           per-game FS layout; the engine finds it in the cwd
                        (portable mode, see CLocatorAPI::setup_fs_path)
-  .installed_ok        JSON marker: game, engine, source, timestamp —
-                       both the "is installed" flag and delete protection
   gamedata/
     shaders/gl         symlink to the engine's res/gamedata/shaders/gl
     config[s]/openxray.ltx   [compatibility] game_mode = <soc|cs|cop>
@@ -66,10 +64,22 @@ directory (plus the matching `-shoc`/`-cs`/`-cop` flag, so the mode is set
 by both the config file and the command line). The engine process is
 detached: closing the launcher does not close the game.
 
-Delete removes **only this folder**. It refuses to run without
-`.installed_ok`, never follows symlinks while deleting, and the original
+Delete removes **only this folder**. It refuses to delete folders not
+registered in the launcher config, never follows symlinks while deleting, and the original
 game copy is never touched. Saves live in `_appdata_/` and are deleted with
 the install — the confirmation says so.
+
+### Modified game (Mods)
+
+Below the game list the sidebar has a **Mods** («Моды») entry — the same
+wizard with one extra step (engine → compatibility mode → source → target)
+where a selectbox picks the mode (`soc` / `cs` / `cop`) the engine runs the
+distribution in. The mode sets the launch flag (`-shoc` / `-cs` / `-cop`),
+`game_mode` in `openxray.ltx` and the `fsgame.ltx` layout; the source folder
+is validated against the picked mode. Point it at a full modified copy of
+the game (a mod applied on top of a GOG/Steam install). Such installs are
+marked `custom` in `launcher.json`, listed on the Modified game page (with
+their mode) and excluded from the per-game counts.
 
 ### Per-game quirks baked into the templates
 
@@ -116,9 +126,9 @@ spec picks the new file up automatically.
 
 ## Launcher state
 
-- Per-install truth: `<target>/.installed_ok` (self-describing; the folder
-  can be moved/removed manually and the launcher notices on the next
-  start).
+- The install list lives only in the config (single source of truth);
+  saves are atomic (tmp + rename) and a corrupt config is backed up to
+  `launcher.json.corrupt` instead of being silently reset.
 - Index + recents:
   `~/.config/xr-launcher/launcher.json` (Linux) / `%APPDATA%\xr-launcher\`
   (Windows) / `~/Library/Application Support/xr-launcher/` (macOS).
