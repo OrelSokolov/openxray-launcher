@@ -7,7 +7,8 @@
 #     slots + named actions), routed pages via ctx.router;
 #   * native code owns the home: a ctx.side_panel game list (one
 #     full-width game button: title + install info on one clickable
-#     surface) and the central content (game page / install wizard).
+#     surface) and the central game page; the install wizard is an
+#     Egui::Wizard embedded window shown over it.
 #
 # Every user-visible string goes through Launcher::L.t
 # (config/locales/*.yml, embedded at compile time).
@@ -87,9 +88,7 @@ module Launcher
           draw_sidebar(ctx, sidebar)
         end
         ctx.central_panel do |content|
-          if wizard = @wizard
-            draw_wizard(ctx, content, wizard)
-          elsif logs = @logs
+          if logs = @logs
             draw_logs_page(ctx, content, logs)
           else
             draw_game_page(ctx, content)
@@ -122,6 +121,9 @@ module Launcher
       # About modal + status bar; on root/root the <launcher_home/>
       # element opens the sidebar + central panels inside the page.
       @renderer.render_routes(ctx, @exml, @rt)
+      # The install wizard on top, once opened — after the page so the
+      # embedded window layers above it.
+      draw_install_wizard(ctx)
     end
 
     # Model → exml store slots. All chrome strings are i18n slots
@@ -343,19 +345,6 @@ module Launcher
       open_wizard(mod: true) if install_btn.clicked?
     end
 
-    private def open_wizard(mod : Bool = false) : Nil
-      if mod
-        game = Catalog[MOD_DEFAULT_MODE]
-        source = @store.recent_sources[MOD_ID]? || ""
-      else
-        game = Catalog[@selected]
-        source = @store.recent_sources[game.id]? || ""
-      end
-      @wizard = WizardState.new(game,
-        engine: @store.recent_engine || "",
-        source: source, mod: mod)
-    end
-
     private def draw_install_row(ctx : Egui::Context, ui : Egui::Ui,
                                  install : Store::Install, subtitle : String? = nil) : Nil
       ui.label(File.expand_path(install.path))
@@ -493,154 +482,197 @@ module Launcher
 
     # --- install wizard ------------------------------------------------------
 
-    # Step names for both wizard flavors. The modified-game wizard
-    # inserts the compatibility-mode step BEFORE the source step — the
-    # source validation depends on the picked mode.
-    private def wizard_step_name(w : WizardState, step : Int32) : String
-      if w.mod?
-        case step
-        when 0 then L.t("wizard.steps.engine")
-        when 1 then L.t("wizard.steps.mode")
-        when 2 then L.t("wizard.steps.source")
-        else        L.t("wizard.steps.target")
-        end
-      else
-        case step
-        when 0 then L.t("wizard.steps.engine")
-        when 1 then L.t("wizard.steps.source")
-        else        L.t("wizard.steps.target")
-        end
-      end
-    end
+    # The install wizard on the egui.cr Wizard component: banner +
+    # scrollable step bodies + the Back/Next/Cancel footer, shown as an
+    # embedded window over the game page. WizardState carries the
+    # paths; the step bodies re-read it every frame (immediate mode).
+    # Text is a snapshot taken at open — a locale switch lands on the
+    # next wizard run.
 
     private def wizard_title(w : WizardState) : String
       w.mod? ? L.t("games.mod.title") : game_title(w.game)
     end
 
-    private def draw_wizard(ctx : Egui::Context, ui : Egui::Ui, w : WizardState) : Nil
-      ui.heading(L.t("home.install_button", title: wizard_title(w)).sub("…", ""))
-      ui.rich(muted(L.t("wizard.step_of",
-        step: w.step + 1, total: w.steps_total, name: wizard_step_name(w, w.step))))
-      ui.separator
-
-      if w.mod?
-        case w.step
-        when 0 then wizard_engine(ctx, ui, w)
-        when 1 then wizard_mode(ctx, ui, w)
-        when 2 then wizard_source(ctx, ui, w)
-        when 3 then wizard_target(ctx, ui, w)
-        end
+    private def open_wizard(mod : Bool = false) : Nil
+      if mod
+        game = Catalog[MOD_DEFAULT_MODE]
+        source = @store.recent_sources[MOD_ID]? || ""
       else
-        case w.step
-        when 0 then wizard_engine(ctx, ui, w)
-        when 1 then wizard_source(ctx, ui, w)
-        when 2 then wizard_target(ctx, ui, w)
+        game = Catalog[@selected]
+        source = @store.recent_sources[game.id]? || ""
+      end
+      w = WizardState.new(game,
+        engine: @store.recent_engine || "",
+        source: source, mod: mod)
+      w.wizard = build_wizard(w)
+      @wizard = w
+    end
+
+    # The wizard forks on its FIRST step: register an already assembled
+    # game folder as-is, or assemble a new distribution from scratch
+    # (engine [+ compatibility mode for a mod] → source → target). The
+    # choice step's on_next rewrites the step list past the fork point
+    # (Engine, source, target steps for scratch; a single existing-
+    # folder step otherwise). Each step re-validates its path every
+    # frame into `w.error`, which gates Next via `can_next`.
+    private def build_wizard(w : WizardState) : Egui::Wizard
+      # --- the fork ----------------------------------------------------------
+
+      choice = Egui::WizardStep.new(L.t("wizard.steps.choice")) do |ui|
+        ui.label(L.t("wizard.choice_intro"))
+        ui.allocate_space(Egui::Vec2.new(0.0, 8.0))
+        if ui.radio(!w.existing?, L.t("wizard.choice_scratch")).clicked?
+          w.existing = false
         end
+        ui.rich(muted(L.t("wizard.choice_scratch_note")), wrap: true)
+        ui.allocate_space(Egui::Vec2.new(0.0, 8.0))
+        if ui.radio(w.existing?, L.t("wizard.choice_existing")).clicked?
+          w.existing = true
+        end
+        ui.rich(muted(L.t("wizard.choice_existing_note")), wrap: true)
       end
 
-      ui.separator
-      ui.horizontal do |h|
-        fg = h.style.visuals.text_color
-        if w.step > 0 && icon_button(h, L.t("wizard.back"),
-            Egui::Icon.from_file(:lucide, :arrow_left, tint: fg)).clicked?
-          w.step -= 1
-          w.error = nil
-        end
-        if w.step < w.steps_total - 1
-          if icon_button(h, L.t("wizard.next"),
-              Egui::Icon.from_file(:lucide, :arrow_right, tint: fg)).clicked? && w.error.nil?
-            w.step += 1
+      # Modified game only: pick the engine compatibility mode. The
+      # choice rewrites the wizard's base game, so every later step
+      # (source validation, fsgame.ltx, launch flag) follows it. It
+      # sits BEFORE the fork — the mode applies to both branches.
+      mode : Egui::WizardStep? = nil
+      if w.mod?
+        mode = Egui::WizardStep.new(L.t("wizard.steps.mode")) do |ui|
+          ui.label(L.t("wizard.mode_intro"))
+          ui.rich(muted(L.t("wizard.mode_note")), wrap: true)
+
+          options = Catalog.all.map { |g| sidebar_title(g) }
+          ui.combo_box("wizard-mode", sidebar_title(w.game), options) do |picked|
+            Catalog.all.each do |g|
+              w.game = g if sidebar_title(g) == picked
+            end
           end
-        else
-          if h.big_button(L.t("wizard.install"),
-              icon: Egui::Icon.from_file(:lucide, :download, tint: fg)).clicked? && w.error.nil?
-            run_install(w)
+
+          ui.separator
+          ui.rich(muted(L.t("wizard.mode_selected_line",
+            title: game_title(w.game), mode: w.game.game_mode, flag: w.game.mode_flag)), wrap: true)
+        end
+      end
+
+      # --- scratch branch ----------------------------------------------------
+
+      engine = Egui::WizardStep.new(L.t("wizard.steps.engine")) do |ui|
+        ui.label(L.t("wizard.engine_intro"))
+        ui.rich(muted(L.t("wizard.engine_layouts")), wrap: true)
+        path_field(ui, :engine, w, L.t("wizard.steps.engine")) { |dir|
+          loc = Engine.resolve(dir)
+          if loc.nil?
+            L.t("errors.engine_missing_binaries", dir: dir)
+          elsif loc.res_gamedata.empty?
+            L.t("errors.engine_no_res_gamedata")
+          else
+            nil
+          end
+        }
+      end
+      engine.can_next { |_wiz| w.error.nil? }
+
+      source = Egui::WizardStep.new(L.t("wizard.steps.source")) do |ui|
+        intro = w.mod? ? "wizard.source_intro_mod" : "wizard.source_intro"
+        ui.label(L.t(intro, title: game_title(w.game)))
+        ui.rich(muted(L.t("wizard.source_note")), wrap: true)
+        path_field(ui, :source, w, L.t("wizard.steps.source")) do |dir|
+          if key = Catalog.validate_source(w.game, dir)
+            L.t(key)
           end
         end
-        if icon_button(h, L.t("wizard.cancel"),
-            Egui::Icon.from_file(:lucide, :x, tint: fg)).clicked?
-          @wizard = nil
-          @status = L.t("status.install_cancelled")
+      end
+      source.can_next { |_wiz| w.error.nil? }
+
+      # The last step replaces the footer's Finish with a custom
+      # Install: the component's Finish closes the wizard
+      # unconditionally, while a FAILED install must keep it open on
+      # this step so the user can fix the target and retry.
+      target = Egui::WizardStep.new(L.t("wizard.steps.target")) do |ui|
+        ui.label(L.t("wizard.target_intro"))
+        if w.target.empty?
+          w.target = File.join(Paths.default_installs_root,
+            w.mod? ? "mod-#{w.game.id}" : w.game.id)
+        end
+        path_field(ui, :target, w, L.t("wizard.steps.target")) { |dir|
+          if dir.empty?
+            L.t("errors.target_empty")
+          elsif File.exists?(dir) && !Dir.empty?(dir)
+            L.t("errors.target_not_empty", path: dir)
+          else
+            nil
+          end
+        }
+        ui.separator
+        ui.label(L.t("wizard.will_create"))
+        ui.rich(muted(L.t("wizard.will_create_body",
+          target: w.target, mode: w.game.game_mode)), wrap: true)
+      end
+      target.buttons = [
+        Egui::Wizard::Button.back(L.t("wizard.back")),
+        Egui::Wizard::Button.custom(L.t("wizard.install")) do |wiz|
+          run_install(w) if w.error.nil?
+          wiz.finish! unless w.failed?
+        end,
+        Egui::Wizard::Button.cancel(L.t("wizard.cancel")),
+      ]
+
+      # --- existing-folder branch --------------------------------------------
+
+      # One step: point at an assembled distribution. The full
+      # "runnable" check (fsgame.ltx, engine binary + modules, GL
+      # shaders, game data) lives in Catalog.validate_install and is
+      # shared with register_install. Registering is bookkeeping only
+      # (the standard Finish button suffices — nothing can half-fail),
+      # so no custom footer here.
+      existing = Egui::WizardStep.new(L.t("wizard.steps.existing")) do |ui|
+        ui.label(L.t("wizard.existing_intro"))
+        ui.rich(muted(L.t("wizard.existing_note")), wrap: true)
+        path_field(ui, :existing, w, L.t("wizard.steps.existing")) do |dir|
+          Catalog.validate_install(w.game, dir).try { |key| L.t(key) }
         end
       end
+      existing.finish_label = L.t("wizard.register")
 
-      if err = w.error
-        ui.rich(Egui::RichText.new(err).color(COLOR_ERROR), wrap: true)
+      # --- wire the fork -----------------------------------------------------
+
+      # Rewrite the step list past the fork: keep the choice (plus the
+      # mode step for a mod), swap the tail. Re-running on every Next
+      # from the choice step also re-forks when the user went back and
+      # switched the radio.
+      choice.on_next do |wiz|
+        keep = [choice] of Egui::WizardStep
+        mode.try { |m| keep << m }
+        tail = w.existing? ? [existing] : [engine, source, target]
+        wiz.steps.clear
+        wiz.steps.concat(keep)
+        wiz.steps.concat(tail)
       end
+
+      steps = [choice] of Egui::WizardStep
+      mode.try { |m| steps << m }
+      steps.concat([engine, source, target])
+
+      wizard = Egui::Wizard.new(
+        L.t("home.install_button", title: wizard_title(w)).sub("…", ""), steps,
+        id: "install-wizard")
+      wizard.on_finish { |_wiz| register_install(w) }
+      wizard.on_cancel { |_wiz| @status = L.t("status.install_cancelled") }
+      wizard
     end
 
-    private def wizard_engine(ctx : Egui::Context, ui : Egui::Ui, w : WizardState) : Nil
-      ui.label(L.t("wizard.engine_intro"))
-      ui.rich(muted(L.t("wizard.engine_layouts")), wrap: true)
-      path_field(ctx, ui, :engine, w) { |dir|
-        loc = Engine.resolve(dir)
-        if loc.nil?
-          L.t("errors.engine_missing_binaries", dir: dir)
-        elsif loc.res_gamedata.empty?
-          L.t("errors.engine_no_res_gamedata")
-        else
-          nil
-        end
-      }
-    end
-
-    private def wizard_source(ctx : Egui::Context, ui : Egui::Ui, w : WizardState) : Nil
-      intro = w.mod? ? "wizard.source_intro_mod" : "wizard.source_intro"
-      ui.label(L.t(intro, title: game_title(w.game)))
-      ui.rich(muted(L.t("wizard.source_note")), wrap: true)
-      path_field(ctx, ui, :source, w) do |dir|
-        if key = Catalog.validate_source(w.game, dir)
-          L.t(key)
-        end
-      end
-    end
-
-    # Modified game only: pick the engine compatibility mode. The
-    # choice rewrites the wizard's base game, so every later step
-    # (source validation, fsgame.ltx, launch flag) follows it.
-    private def wizard_mode(ctx : Egui::Context, ui : Egui::Ui, w : WizardState) : Nil
-      ui.label(L.t("wizard.mode_intro"))
-      ui.rich(muted(L.t("wizard.mode_note")), wrap: true)
-
-      options = Catalog.all.map { |g| sidebar_title(g) }
-      ui.combo_box("wizard-mode", sidebar_title(w.game), options) do |picked|
-        Catalog.all.each do |g|
-          w.game = g if sidebar_title(g) == picked
-        end
-      end
-
-      ui.separator
-      ui.rich(muted(L.t("wizard.mode_selected_line",
-        title: game_title(w.game), mode: w.game.game_mode, flag: w.game.mode_flag)), wrap: true)
-    end
-
-    private def wizard_target(ctx : Egui::Context, ui : Egui::Ui, w : WizardState) : Nil
-      ui.label(L.t("wizard.target_intro"))
-      if w.target.empty?
-        default = File.join(Paths.default_installs_root,
-          w.mod? ? "mod-#{w.game.id}" : w.game.id)
-        w.target = default
-      end
-      path_field(ctx, ui, :target, w) { |dir|
-        if dir.empty?
-          L.t("errors.target_empty")
-        elsif File.exists?(dir) && !Dir.empty?(dir)
-          L.t("errors.target_not_empty", path: dir)
-        else
-          nil
-        end
-      }
-      ui.separator
-      ui.label(L.t("wizard.will_create"))
-      ui.rich(muted(L.t("wizard.will_create_body",
-        target: w.target, mode: w.game.game_mode)), wrap: true)
+    # Drive the open wizard; show reports the frame the user is done
+    # with the window (Install finished, Cancel, ✕/Escape).
+    private def draw_install_wizard(ctx : Egui::Context) : Nil
+      return unless (w = @wizard)
+      @wizard = nil if w.wizard.show(ctx)
     end
 
     # A path input row: editable text + folder picker; re-validates every
     # frame and stores the error on the wizard state.
-    private def path_field(ctx : Egui::Context, ui : Egui::Ui,
-                           field : Symbol, w : WizardState,
-                           &validate : String -> String?) : Nil
+    private def path_field(ui : Egui::Ui, field : Symbol, w : WizardState,
+                           hint : String, &validate : String -> String?) : Nil
       value = w.get(field)
 
       ui.horizontal do |h|
@@ -651,7 +683,7 @@ module Launcher
             w.set(field, picked) if picked
           end
         end
-        h.text_edit_singleline(value, hint: wizard_step_name(w, w.step)) { |text| w.set(field, text) }
+        h.text_edit_singleline(value, hint: hint) { |text| w.set(field, text) }
       end
 
       err = validate.call(w.get(field))
@@ -665,6 +697,7 @@ module Launcher
 
     private def run_install(w : WizardState) : Nil
       @status = L.t("status.installing", title: wizard_title(w))
+      w.failed = false
       begin
         install = Installer.install(w.game, w.source, w.engine, w.target, @store,
           custom: w.mod?) { |line|
@@ -672,11 +705,49 @@ module Launcher
         }
         @status = L.t("status.installed", path: install.path)
         @selected = w.mod? ? MOD_ID : w.game.id
-        @wizard = nil
       rescue ex : InstallError | File::Error
-        w.error = ex.message.to_s
+        w.failed = true
         @status = L.t("status.install_failed", message: ex.message)
       end
+    end
+
+    # The "existing folder" branch: validate + store bookkeeping only —
+    # the folder itself is left untouched and becomes playable as-is.
+    # Re-validated here: the gate only proves the last frame was clean.
+    private def register_install(w : WizardState) : Nil
+      path = File.expand_path(w.existing_dir)
+      if key = Catalog.validate_install(w.game, path)
+        @status = L.t("status.register_failed", message: L.t(key))
+        return
+      end
+      begin
+        install = Store::Install.new(
+          id: Store.next_id(w.game.id),
+          game: w.game.id,
+          path: path,
+          engine: engine_hint(path),
+          source: "",
+          created_at: Time.local.to_rfc3339,
+          custom: w.mod?)
+        @store.add_install(install)
+        @store.save
+        @status = L.t("status.registered", path: path)
+        @selected = w.mod? ? MOD_ID : w.game.id
+      rescue ex : File::Error | IO::Error
+        @status = L.t("status.register_failed", message: ex.message)
+      end
+    end
+
+    # Where the engine of a registered install lives, when we can tell:
+    # an assembled distribution links bin/xr_3da at the engine build, so
+    # the symlink's target dir is the hint. Otherwise "" (informational
+    # only — the row on the game page shows it).
+    private def engine_hint(path : String) : String
+      exe = File.join(path, "bin", Engine.executable_name)
+      return File.dirname(File.readlink(exe)) if File.symlink?(exe)
+      ""
+    rescue ex : File::Error
+      ""
     end
 
     # Logs page state: the install being inspected plus the last scan
@@ -691,25 +762,30 @@ module Launcher
       end
     end
 
-    # Wizard state: the three paths, the modified-game compat mode, the
-    # current step and validation error. A plain class held by the app
-    # (immediate mode: the UI is rebuilt from this every frame). For a
-    # modified game `game` is the picked mode's base game and gets
-    # swapped when the selectbox changes.
+    # Wizard state: the Egui::Wizard component (step chrome and
+    # navigation) plus the data the step bodies rebuild from every
+    # frame: the fork choice (register an existing folder vs assemble
+    # from scratch) with its path, the three scratch paths, the
+    # modified-game compat mode and the current validation error.
+    # `failed` flags the last Install run so the custom Install button
+    # keeps the window open on failure. For a modified game `game` is
+    # the picked mode's base game and gets swapped when the selectbox
+    # changes.
     class WizardState
+      # Late-init: the wizard is built right after the state exists
+      # (step bodies and gates close over the state), by open_wizard.
+      property! wizard : Egui::Wizard
       property game : Catalog::Game
-      property step : Int32 = 0
       property engine : String
       property source : String
       property target : String = ""
+      property existing_dir : String = ""
+      property? existing : Bool = false   # the fork: register vs assemble
       property error : String?
       property? mod : Bool = false
+      property? failed : Bool = false
 
       def initialize(@game, @engine, @source, @mod = false)
-      end
-
-      def steps_total : Int32
-        mod? ? 4 : 3
       end
 
       def get(field : Symbol) : String
@@ -717,6 +793,7 @@ module Launcher
         when :engine then engine
         when :source then source
         when :target then target
+        when :existing then existing_dir
         else raise ArgumentError.new("unknown wizard field #{field}")
         end
       end
@@ -726,6 +803,7 @@ module Launcher
         when :engine then @engine = value
         when :source then @source = value
         when :target then @target = value
+        when :existing then @existing_dir = value
         end
       end
     end

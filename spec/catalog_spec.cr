@@ -46,4 +46,33 @@ describe Launcher::Catalog do
       Launcher::Catalog.validate_source(cop, empty).should be_nil
     end
   end
+
+  it "validates existing install folders runnability, layer by layer" do
+    with_tmp do |dir|
+      cop = Launcher::Catalog["cop"]
+      exe = Launcher::Engine.executable_name
+
+      # not there / not a distribution
+      Launcher::Catalog.validate_install(cop, File.join(dir, "missing"))
+        .should eq("errors.source_not_found")
+      Launcher::Catalog.validate_install(cop, dir).should eq("errors.existing_no_fsgame")
+
+      File.write(File.join(dir, "fsgame.ltx"), "x")
+      Launcher::Catalog.validate_install(cop, dir).should eq("errors.existing_no_bin")
+
+      bin = File.join(dir, "bin"); Dir.mkdir(bin)
+      Launcher::Catalog.validate_install(cop, dir).should eq("errors.existing_no_bin")
+      File.write(File.join(bin, exe), "binary")
+      Launcher::Catalog.validate_install(cop, dir).should eq("errors.existing_no_bin") # no modules
+      File.write(File.join(bin, "xrEngine.so"), "so")
+
+      Launcher::Catalog.validate_install(cop, dir).should eq("errors.existing_no_shaders")
+      Dir.mkdir_p(File.join(dir, "gamedata", "shaders", "gl"))
+
+      # shaders ok but no game data
+      Launcher::Catalog.validate_install(cop, dir).should eq("errors.source_cop_none")
+      Dir.mkdir(File.join(dir, "levels"))
+      Launcher::Catalog.validate_install(cop, dir).should be_nil
+    end
+  end
 end

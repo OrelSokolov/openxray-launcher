@@ -28,12 +28,18 @@ ru:
     confirm_delete: Подтвердить удаление (вместе с сохранениями!)
     cancel: Отмена
   wizard:
-    step_of: "Шаг %{step} из %{total} — %{name}"
     steps:
+      choice: Тип установки
       engine: Папка движка OpenXRay
       mode: Режим совместимости
       source: Папка оригинальной игры
       target: Папка установки
+      existing: Папка игры
+    choice_intro: "Зарегистрировать уже готовую папку с игрой или собрать новый дистрибутив с нуля."
+    choice_scratch: "Собрать новый дистрибутив"
+    choice_scratch_note: "Бинарники движка + симлинки на игровые данные + конфиги игры — из лицензионной копии."
+    choice_existing: "Использовать существующую папку с игрой"
+    choice_existing_note: "Собранная папка регистрируется как есть — ничего не собирается и не изменяется."
     engine_intro: "Укажите сборку OpenXRay, на которой будете играть. Поддерживаются:"
     engine_layouts: "• checkout репозитория xray-16 (bin/x86_64/Release + res/)\n• сама папка bin/x86_64/Release\n• установленный префикс (lib/openxray + share/openxray)"
     mode_intro: "Выберите режим совместимости движка, в котором запускать эту модифицированную игру:"
@@ -47,10 +53,13 @@ ru:
     will_create_body: "%{target}/\n  bin/ (движок) · fsgame.ltx\n  gamedata/ (GL-шейдеры, openxray.ltx game_mode=%{mode}, оверлеи скриптов)\n  _appdata_/ (сохранения, логи) · симлинки на игровые данные -> оригинальная копия"
     browse: Обзор…
     ok: OK
-    back: "< Назад"
-    next: "Далее >"
+    back: Назад
+    next: Далее
     install: Установить
+    register: Зарегистрировать
     cancel: Отмена
+    existing_intro: "Укажите собранную папку игры (fsgame.ltx + bin/xr_3da):"
+    existing_note: "Папка лишь регистрируется в лаунчере — сразу готова к запуску, внутри ничего не меняется."
   logs:
     title: Логи и краши
     dir_line: "Папка логов: %{path}"
@@ -76,6 +85,8 @@ ru:
     ready: Готово.
     installing: "Установка %{title}…"
     installed: "Установлено: %{path}"
+    registered: "Зарегистрировано: %{path}"
+    register_failed: "Не удалось зарегистрировать: %{message}"
     install_failed: "Ошибка установки: %{message}"
     install_cancelled: Установка отменена
     launched: "Запущено: %{path}"
@@ -114,6 +125,9 @@ ru:
     engine_no_res: "папка движка: нечего линковать в %{dir}"
     engine_missing_binaries: в %{dir} нет бинарников OpenXRay
     engine_no_res_gamedata: "бинарники найдены, но без res/gamedata — GL-шейдеры будут отсутствовать"
+    existing_no_fsgame: "в корне папки нет fsgame.ltx — это не собранный дистрибутив"
+    existing_no_bin: "в bin/ нет бинарника движка (xr_3da) или его модулей"
+    existing_no_shaders: "нет gamedata/shaders/gl — без GL-шейдеров рендерер не запустится"
     target_exists: "целевая папка %{path} уже существует"
     target_not_empty: "целевая папка %{path} не пуста"
     target_root: "отказ: установка в %{path}"

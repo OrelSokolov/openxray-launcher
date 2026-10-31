@@ -49,8 +49,9 @@ checkouts work without an SSH key.
 
 ## What an "install" is
 
-The install wizard asks for three folders — engine, original game, target —
-and creates:
+The install wizard first forks: register an already assembled game folder
+as-is, or assemble a new distribution from three folders — engine, original
+game, target. Assembly creates:
 
 ```
 <target>/
@@ -82,7 +83,7 @@ the install — the confirmation says so.
 ### Modified game (Mods)
 
 Below the game list the sidebar has a **Mods** («Моды») entry — the same
-wizard with one extra step (engine → compatibility mode → source → target)
+wizard with one extra step (setup type → compatibility mode → engine/source)
 where a selectbox picks the mode (`soc` / `cs` / `cop`) the engine runs the
 distribution in. The mode sets the launch flag (`-shoc` / `-cs` / `-cop`),
 `game_mode` in `openxray.ltx` and the `fsgame.ltx` layout; the source folder

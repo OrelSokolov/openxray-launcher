@@ -150,5 +150,29 @@ module Launcher
       end
       nil
     end
+
+    # Validate an ALREADY-ASSEMBLED distribution folder (the wizard's
+    # "use an existing folder" branch): everything the game needs to
+    # actually start — fsgame.ltx at the root, the engine binary plus
+    # its shared modules in bin/, the GL shaders, and the game data
+    # itself (an assembled install mirrors the source copy's data
+    # markers at its root, so the source check closes the list).
+    # Returns nil when the folder looks runnable, or an i18n error KEY.
+    def self.validate_install(game : Game, dir : String) : String?
+      return "errors.source_not_found" unless Dir.exists?(dir)
+      return "errors.existing_no_fsgame" unless File.exists?(File.join(dir, "fsgame.ltx"))
+
+      bin = File.join(dir, "bin")
+      modules = Dir.exists?(bin) && Dir.children(bin).any? do |name|
+        name.matches?({% if flag?(:win32) %} /\.dll$/i {% else %} /\.so$/ {% end %})
+      end
+      return "errors.existing_no_bin" unless modules &&
+                                            File.exists?(File.join(bin, Engine.executable_name))
+
+      return "errors.existing_no_shaders" unless Dir.exists?(
+        File.join(dir, "gamedata", "shaders", "gl"))
+
+      validate_source(game, dir)
+    end
   end
 end
