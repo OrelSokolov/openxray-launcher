@@ -6,9 +6,15 @@
 #     page, status bar, About modal — through the exml Runtime (store
 #     slots + named actions), routed pages via ctx.router;
 #   * native code owns the home: a ctx.side_panel game list (one
-#     full-width game button: title + install info on one clickable
-#     surface) and the central game page; the install wizard is an
-#     Egui::Wizard embedded window shown over it.
+#     full-width game card: icon + title + install info on one
+#     clickable surface) and the central game page (gradient header
+#     card, install cards, the install wizard as an Egui::Wizard
+#     embedded window shown over it).
+#
+# The look — the "Zone" theme (App.xr_theme): dark browser-style
+# surfaces, one amber accent, rounded buttons with drop shadows
+# (`button` class rules), full-width gradient CTA buttons (`hero.*`
+# rules + #hero_button) and shadowed cards (#card).
 #
 # Every user-visible string goes through Launcher::L.t
 # (config/locales/*.yml, embedded at compile time).
@@ -40,11 +46,152 @@ module Launcher
     end
   end
 
+  # One sidebar row as a real Widget (was paint-in-place: raw
+  # allocate/interact/painter calls the widget inspector could not
+  # see). Living through `Ui#add` gives it an inspector pick, a stable
+  # explicit id ("game-<key>") and the style cascade — class rules
+  # ("sidebar.entry", with :hover/:active overlays) plus per-element
+  # inspector overrides. The built-in "Zone" look (the selected amber
+  # gradient card with a drop shadow, the hover translucent surface)
+  # are the FALLBACKS of those same keys (the Button#gradient
+  # pattern), so every value stays editable per state.
+  class SidebarEntry
+    include Egui::Widget
+
+    SEL_STROKE = Egui::Color32.rgba(255, 214, 130, 90)
+    SEL_INFO   = Egui::Color32.rgba(70, 46, 8, 220)
+    HOVER_FILL = Egui::Color32.rgba(255, 255, 255, 16)
+
+    def initialize(key : String, @title : String, @info : String,
+                   @selected : Bool, @icon_path : String?)
+      @id_name = "game-#{key}"
+    end
+
+    def style_class : String?
+      "sidebar.entry"
+    end
+
+    def inspector_label : String?
+      @title
+    end
+
+    def style_properties : Array(Egui::StyleProp)
+      props = Egui::StyleProps.sizable + [
+        Egui::StyleProp.new("background", :color, states: true),
+        Egui::StyleProp.new("background2", :color, states: true,
+          label: "background 2 (gradient)"),
+        Egui::StyleProp.new("stroke", :color, states: true),
+        Egui::StyleProp.new("rounding", :number, fallback: 10.0, min: 0.0),
+        Egui::StyleProp.new("text_color", :color),
+        Egui::StyleProp.new("info_color", :color),
+        Egui::StyleProp.new("icon_size", :number, fallback: 24.0, min: 0.0),
+        Egui::StyleProp.new("shadow.color", :color, states: true),
+        Egui::StyleProp.new("shadow.blur", :number, min: 0.0),
+        Egui::StyleProp.new("shadow.x", :number),
+        Egui::StyleProp.new("shadow.y", :number),
+      ]
+      # A selected card seeds its live painted values as the display
+      # defaults, so inspector edits start from what is on screen.
+      if @selected
+        seed = {"background"  => App::ACCENT_LIGHT,
+                "background2" => App::ACCENT_DARK,
+                "stroke"      => SEL_STROKE,
+                "text_color"  => App::ON_ACCENT,
+                "info_color"  => SEL_INFO}
+        props = props.map { |p| (v = seed[p.key]?) ? p.with_fallback(v) : p }
+      end
+      props
+    end
+
+    def ui(ui : Egui::Ui) : Egui::Response
+      id = resolve_id(ui)
+      vars = style_vars(ui, id)
+
+      size = ui.style.font_size
+      title_h = size * 1.15
+      info_h = size * 0.8
+      height = {title_h + info_h + 16.0, 48.0}.max
+      sz = styled_size(Egui::Vec2.new(ui.available_width, height), vars, ui, id)
+
+      rect = ui.allocate_at_least(sz)
+      response = ui.interact(rect, id, Egui::Sense.click)
+
+      # The state bag re-resolved for the live state: a
+      # `sidebar.entry:hover` rule / inspector state override applies
+      # while hovered.
+      state = response.hovered? ? "hover" : nil
+      sv = style_vars(ui, id, state)
+      painter = ui.painter
+      rounding = sv.f64("rounding", 10.0)
+
+      # The selected card's drop shadow — under the fill like before.
+      shadow = sv.shadow?
+      shadow ||= Egui::BoxShadowSpec.new(App::CARD_SHADOW, 10.0, 0.0,
+        Egui::Vec2.new(0.0, 3.0)) if @selected
+      if shadow && !shadow.inset?
+        painter.box_shadow(rect, shadow.color, blur: shadow.blur,
+          rounding: rounding, spread: shadow.spread, offset: shadow.offset)
+      end
+
+      # Fill: selected → the amber gradient (kept while hovered, the
+      # original look), hovered → a translucent surface, else nothing.
+      fill = sv.color?("background") ||
+             (@selected ? App::ACCENT_LIGHT : (response.hovered? ? HOVER_FILL : nil))
+      fill2 = sv.color?("background2") || (@selected ? App::ACCENT_DARK : nil)
+      if fill
+        painter.rect(rect, rounding, fill: fill, fill2: fill2,
+          stroke_color: sv.color?("stroke") || (@selected ? SEL_STROKE : nil))
+      end
+
+      title_color = sv.color?("text_color") ||
+                    (@selected ? App::ON_ACCENT : ui.style.visuals.text_color)
+      info_color = sv.color?("info_color") ||
+                   (@selected ? SEL_INFO : App::COLOR_MUTED)
+
+      tx = rect.left + 12.0
+      if (path = @icon_path) && File.exists?(path) &&
+         (tex = ui.ctx.load_image(path)) > 0
+        icon_side = sv.f64("icon_size", 24.0)
+        icon_box = Egui::Rect.from_min_size(
+          Egui::Pos2.new(tx, rect.center.y - icon_side / 2.0),
+          Egui::Vec2.new(icon_side, icon_side))
+        painter.image(icon_box, tex)
+        tx += icon_side + 10.0
+      end
+
+      block_h = title_h + info_h + 4.0
+      block_top = rect.top + (rect.height - block_h) / 2.0
+      painter.text(Egui::Pos2.new(tx, block_top + title_h / 2.0),
+        @title, title_h, title_color, bold: true)
+      painter.text(Egui::Pos2.new(tx, block_top + title_h + 4.0 + info_h / 2.0),
+        @info, info_h, info_color)
+
+      response
+    end
+  end
+
   class App < Egui::App
-    COLOR_MUTED = Egui::Color32.new(160, 165, 175, 255)
-    COLOR_OK    = Egui::Color32.new(120, 220, 120, 255)
-    COLOR_WARN  = Egui::Color32.new(240, 200, 80, 255)
-    COLOR_ERROR = Egui::Color32.new(240, 100, 100, 255)
+    COLOR_MUTED = Egui::Color32.rgb(154, 161, 176)
+    COLOR_OK    = Egui::Color32.rgb(120, 220, 120)
+    COLOR_WARN  = Egui::Color32.rgb(240, 200, 80)
+    COLOR_ERROR = Egui::Color32.rgb(240, 100, 100)
+
+    # --- the "Zone" palette: dark browser-style surfaces + amber accent ---
+
+    ACCENT   = Egui::Color32.rgb(206, 122, 30)  # selection / CTA accent
+    ACCENT_LIGHT = Egui::Color32.rgb(222, 146, 62) # gradient top
+    ACCENT_DARK  = Egui::Color32.rgb(170, 95, 20)  # gradient bottom
+    ON_ACCENT    = Egui::Color32.rgb(40, 27, 6)    # near-black text on amber
+    COLOR_DANGER = Egui::Color32.rgb(235, 90, 90)
+
+    # Elevated surfaces (cards): fill, header gradient ends, hairline
+    # stroke, drop shadow.
+    CARD_FILL     = Egui::Color32.rgb(26, 29, 37)
+    CARD_TOP      = Egui::Color32.rgb(33, 37, 48)
+    CARD_BOTTOM   = Egui::Color32.rgb(23, 26, 33)
+    CARD_STROKE   = Egui::Color32.rgba(255, 255, 255, 20)
+    CARD_SHADOW   = Egui::Color32.rgba(0, 0, 0, 110)
+    CARD_ROUNDING = 12.0
 
     SETTINGS = "root/settings"
 
@@ -70,6 +217,114 @@ module Launcher
     @exml : Egui::Exml::Document
     @renderer = Egui::Exml::Renderer.new
     @rt = Egui::Exml::Runtime.new
+
+    # The "Zone" theme: dark browser-style palette plus class rules so
+    # every button in the app (wizard footer, exml chrome, dialogs)
+    # picks up the rounded/shadowed look. Derived from the egui.cr
+    # defaults — a palette swap via `DefaultTheme.build`, then a few
+    # sheet rules on top.
+    def self.xr_theme : Egui::Theme
+      theme = Egui::DefaultTheme.build("xr-zone", dark: true) do |v|
+        v.window_fill = Egui::Color32.rgb(19, 21, 27)
+        v.window_stroke = Egui::Color32.rgb(45, 49, 60)
+        v.title_bar_fill = v.window_fill
+        v.panel_fill = Egui::Color32.rgb(12, 13, 17)
+        v.text_color = Egui::Color32.rgb(228, 231, 238)
+        v.title_color = Egui::Color32.rgb(246, 247, 250)
+        v.button_weak = Egui::Color32.rgba(255, 255, 255, 10)
+        v.button_hovered = Egui::Color32.rgba(255, 255, 255, 16)
+        v.button_active = Egui::Color32.rgba(255, 255, 255, 24)
+        v.button_stroke = Egui::Color32.rgba(255, 255, 255, 20)
+        v.selection_fill = ACCENT
+        v.hyperlink_color = Egui::Color32.rgb(110, 168, 254)
+        v.separator_color = Egui::Color32.rgba(255, 255, 255, 22)
+        v.modal_dim = Egui::Color32.rgba(0, 0, 0, 120)
+      end
+
+      sheet = theme.sheet
+      # Buttons: dark surface with a subtle drop shadow that lifts a
+      # little on hover and sinks (inset) on press; `transition`
+      # animates between states. NOTE: every state rule must carry
+      # `background` — the user-agent theme ships a `button:hover`
+      # overlay of its own (v.button_hovered, a translucent white),
+      # and the state layer ALWAYS beats class rules: without an
+      # explicit hover fill here, the fill transitions towards that
+      # white through bright semi-opaque grays — a flash on hover.
+      sheet.rule("button", Egui::StyleVars{
+        "background"     => Egui::Color32.rgb(24, 24, 27),
+        "padding.bottom" => 6.0,
+        "padding.left"   => 14.0,
+        "padding.right"  => 14.0,
+        "padding.top"    => 6.0,
+        "rounding"       => 8.0,
+        "shadow.blur"    => 2.0,
+        "shadow.color"   => Egui::Color32.rgb(0, 0, 0),
+        "shadow.y"       => 1.0,
+        "stroke"         => Egui::Color32.rgb(60, 60, 60),
+        "text_color"     => Egui::Color32.rgb(190, 190, 190),
+        "transition"     => 120.0,
+      })
+      sheet.rule("button:hover", Egui::StyleVars{
+        "background"  => Egui::Color32.rgb(32, 32, 36),
+        "shadow.blur" => 4.0,
+        "shadow.y"    => 1.0,
+        "stroke"      => Egui::Color32.rgb(98, 98, 98),
+      })
+      sheet.rule("button:active", Egui::StyleVars{
+        "background"   => Egui::Color32.rgb(12, 12, 13),
+        "shadow.inset" => true,
+      })
+      # Hero (primary CTA) buttons — drawn inside `with_style_scope
+      # ("hero")` (see #hero_button): same shape, bigger, slate
+      # vertical-gradient surface.
+      sheet.rule("hero.button", Egui::StyleVars{
+        "background"     => Egui::Color32.rgb(90, 99, 112),
+        "background2"    => Egui::Color32.rgb(32, 31, 41),
+        "font_size"      => 15.0,
+        "font_weight"    => 400.0,
+        "padding.top"    => 10.0,
+        "padding.right"  => 18.0,
+        "padding.bottom" => 10.0,
+        "padding.left"   => 18.0,
+        "rounding"       => 12.0,
+        "text_color"     => Egui::Color32.rgb(255, 255, 255),
+      })
+      sheet.rule("hero.button:hover", Egui::StyleVars{
+        "background"     => Egui::Color32.rgb(134, 146, 164),
+        "background2"    => Egui::Color32.rgb(37, 35, 49),
+        "shadow.blur"    => 9.0,
+        "shadow.y"       => 3.0,
+      })
+      sheet.rule("hero.button:active", Egui::StyleVars{"shadow.inset" => true})
+      # The Play button (#draw_install_row) — the same hero shape in a
+      # brighter slate-blue gradient; it runs inside a nested
+      # `with_style_scope("hero") { with_style_scope("play") }`, so its
+      # class path is "hero.play.button" (which does NOT inherit from
+      # "hero.button" — the rule below carries the full shape).
+      sheet.rule("hero.play.button", Egui::StyleVars{
+        "background"     => Egui::Color32.rgb(143, 157, 179),
+        "background2"    => Egui::Color32.rgb(65, 73, 95),
+        "font_size"      => 18.5,
+        "padding.top"    => 10.0,
+        "padding.right"  => 18.0,
+        "padding.bottom" => 10.0,
+        "padding.left"   => 18.0,
+        "rounding"       => 12.0,
+        "text_color"     => Egui::Color32.rgb(255, 255, 255),
+      })
+      sheet.rule("hero.play.button:hover", Egui::StyleVars{
+        "background"  => Egui::Color32.rgb(171, 185, 206),
+        "background2" => Egui::Color32.rgb(76, 84, 104),
+        "shadow.blur" => 9.0,
+        "shadow.y"    => 3.0,
+      })
+      sheet.rule("hero.play.button:active",
+        Egui::StyleVars{"shadow.inset" => true})
+      # Wizard chrome follows the card surfaces.
+      sheet.rule("wizard.header", Egui::StyleVars{"background" => CARD_TOP})
+      sheet.rule("side_image", Egui::StyleVars{"background" => CARD_BOTTOM})
+      theme
+    end
 
     def initialize
       super
@@ -97,6 +352,10 @@ module Launcher
       end
 
       register_actions
+      # The theme swap must land before the first frame; it goes last —
+      # an instance call before every ivar is assigned trips Crystal's
+      # "possibly uninitialized ivar" check.
+      self.theme = self.class.xr_theme
     end
 
     # LAUNCHER_EXML env override, then assets/launcher.exml next to the
@@ -186,7 +445,7 @@ module Launcher
     # --- the sidebar ---------------------------------------------------------
 
     private def draw_sidebar(ctx : Egui::Context, ui : Egui::Ui) : Nil
-      ui.horizontal do |h|
+      ui.horizontal(wrap: false) do |h|
         if (logo = Assets.icon("launcher_64.png")) && File.exists?(logo) &&
            (tex = ctx.load_image(logo)) > 0
           h.image(tex, Egui::Vec2.new(32.0, 32.0))
@@ -194,65 +453,50 @@ module Launcher
         h.heading("OpenXRay")
       end
       ui.rich(muted(L.t("app.subtitle")))
-      ui.separator
+      ui.allocate_space(Egui::Vec2.new(0.0, 10.0))
 
       Catalog.all.each do |game|
         draw_game_button(ui, game)
+        ui.allocate_space(Egui::Vec2.new(0.0, 4.0))
       end
 
-      ui.separator
+      ui.allocate_space(Egui::Vec2.new(0.0, 6.0))
       mods = @store.custom_installs.size
       info = mods.zero? ? L.t("home.not_installed") : \
         L.t(mods == 1 ? "home.installs_count_one" : "home.installs_count", n: mods)
-      draw_sidebar_entry(ui, id: MOD_ID, title: L.t("games.mod.title"), info: info)
+      draw_sidebar_entry(ui, id: MOD_ID, title: L.t("games.mod.title"),
+        info: info, icon_path: Assets.icon("launcher_64.png"))
     end
 
-    # One game = one full-width clickable surface: the whole row (title
-    # + install info) selects the game; selected/hover paint a filled
-    # background across the sidebar width.
+    # One game = one full-width clickable surface: the whole row (icon +
+    # title + install info) selects the game. The card itself is the
+    # SidebarEntry widget (pickable/editable in the F12 widget
+    # inspector); this wrapper only routes the click.
     private def draw_game_button(ui : Egui::Ui, game : Catalog::Game) : Nil
       # NOTE: the param must NOT be named `count` — crystal-i18n treats
       # that as pluralization and looks up `key.one/.other` sub-keys.
       installs = @store.for_game(game.id).count { |i| !i.custom? }
       info = installs.zero? ? L.t("home.not_installed") : \
         L.t(installs == 1 ? "home.installs_count_one" : "home.installs_count", n: installs)
-      draw_sidebar_entry(ui, id: game.id, title: sidebar_title(game), info: info)
+      draw_sidebar_entry(ui, id: game.id, title: sidebar_title(game),
+        info: info, icon_path: Assets.icon("openxray_#{game.id}.png"))
     end
 
-    # The clickable row itself: title + muted info line, selection and
-    # hover painted across the full sidebar width.
-    private def draw_sidebar_entry(ui : Egui::Ui, id : String,
-                                   title : String, info : String) : Nil
-      selected = @selected == id
-
-      size = ui.style.font_size
-      pad = 8.0
-      title_h = size * 1.25
-      info_h = size * 0.85
-      height = title_h + info_h + 2 * pad
-
-      rect = ui.allocate_at_least(Egui::Vec2.new(ui.available_width, height))
-      response = ui.interact(rect, Egui::Id.from("game-#{id}"), Egui::Sense.click)
-      response.mark_changed if response.clicked?
-
-      visuals = ui.style.visuals
-      if selected
-        ui.painter.rect(rect, 4.0, fill: visuals.selection_fill)
-      elsif response.hovered?
-        ui.painter.rect(rect, 4.0,
-          fill: visuals.fade_color(visuals.selection_fill, 0.4_f64))
-      end
-      ui.painter.text(Egui::Pos2.new(rect.left + pad, rect.top + pad + title_h / 2),
-        title, title_h, visuals.text_color, bold: true)
-      ui.painter.text(Egui::Pos2.new(rect.left + pad, rect.top + pad + title_h + info_h / 2),
-        info, info_h, COLOR_MUTED)
-
-      if response.clicked?
-        @selected = id
-        @wizard = nil
-        @logs = nil
-        @confirm_delete = nil
-      end
+    # The clickable row itself: optional icon + title + muted info line.
+    # Selected paints an amber gradient card with a drop shadow and a
+    # near-black label; hover a translucent surface; both rounded like a
+    # web nav item. All of it is the SidebarEntry's cascade, editable in
+    # the widget inspector — here only the selection state changes.
+    private def draw_sidebar_entry(ui : Egui::Ui, id : String, title : String,
+                                   info : String, icon_path : String?) : Nil
+      response = ui.add(SidebarEntry.new(id, title, info, @selected == id,
+        icon_path))
+      return unless response.clicked?
+      response.mark_changed
+      @selected = id
+      @wizard = nil
+      @logs = nil
+      @confirm_delete = nil
     end
 
     # --- the central content --------------------------------------------------
@@ -280,90 +524,152 @@ module Launcher
       ui.add(Egui::Button.new(text).icon(icon))
     end
 
+    # A web-style card: rounded elevated surface (drop shadow + hairline
+    # stroke, optional vertical gradient fill) around a block of
+    # content. Mirrors `Ui#frame`'s back-paint trick — paint slots are
+    # reserved BEFORE the content lays out, then filled with the final
+    # outer rect, so the shadow lands under the fill under the content.
+    private def card(ui : Egui::Ui, fill : Egui::Color32? = CARD_FILL,
+                     fill2 : Egui::Color32? = nil, &block : Egui::Ui ->) : Nil
+      shadow_idx = ui.painter.add_noop
+      fill_idx = ui.painter.add_noop
+      outer = ui.frame(rounding: CARD_ROUNDING,
+        margin: Egui::Vec2.new(18.0, 14.0), &block)
+      clip = ui.painter.clip
+      ui.painter.set(shadow_idx, Egui::ShadowCmd.new(clip, outer,
+        CARD_ROUNDING, 16.0, 0.0, Egui::Vec2.new(0.0, 5.0), CARD_SHADOW, false))
+      if fill || fill2
+        ui.painter.set(fill_idx, Egui::RectCmd.new(clip, outer, CARD_ROUNDING,
+          fill, CARD_STROKE, 1.0, fill2))
+      end
+    end
+
+    # The primary CTA: full-width slate gradient button — the
+    # "hero.button" scope class (see .xr_theme) supplies the gradient
+    # fill, size and shadow; call it inside `with_style_scope("hero")`.
+    private def hero_button(ui : Egui::Ui, text : String, icon : Egui::Svg) : Egui::Response
+      btn = Egui::Button.new(text)
+        .min_size(Egui::Vec2.new(ui.available_width, 46.0))
+        .rounding(12.0)
+        .icon(icon)
+      ui.add(btn)
+    end
+
     private def draw_game_page(ctx : Egui::Context, ui : Egui::Ui) : Nil
       return draw_mod_page(ctx, ui) if @selected == MOD_ID
       game = Catalog[@selected]
 
-      ui.horizontal do |h|
-        icon_path = Assets.icon("openxray_#{game.id}.png")
-        if icon_path && File.exists?(icon_path) && (tex = ctx.load_image(icon_path)) > 0
-          h.image(tex, Egui::Vec2.new(48.0, 48.0))
+      # The game header: a gradient hero card (icon + title + notes).
+      card(ui, fill: CARD_TOP, fill2: CARD_BOTTOM) do |c|
+        c.horizontal(wrap: false) do |h|
+          icon_path = Assets.icon("openxray_#{game.id}.png")
+          if icon_path && File.exists?(icon_path) && (tex = ctx.load_image(icon_path)) > 0
+            h.image(tex, Egui::Vec2.new(44.0, 44.0))
+          end
+          h.heading(game_title(game))
         end
-        h.heading(game_title(game))
+        if game.experimental?
+          c.rich(Egui::RichText.new(L.t("home.experimental")).color(COLOR_WARN))
+        end
+        c.rich(muted(L.t("games.#{game.id}.notes")), wrap: true)
       end
-      if game.experimental?
-        ui.rich(Egui::RichText.new(L.t("home.experimental")).color(COLOR_WARN))
-      end
-      ui.rich(muted(L.t("games.#{game.id}.notes")), wrap: true)
-      ui.separator
+      ui.allocate_space(Egui::Vec2.new(0.0, 8.0))
 
       installs = @store.for_game(game.id).reject(&.custom?)
       if installs.empty?
-        ui.label(L.t("home.no_installs"))
+        card(ui) do |c|
+          c.allocate_space(Egui::Vec2.new(0.0, 14.0))
+          c.label(L.t("home.no_installs"), align: :center)
+          c.allocate_space(Egui::Vec2.new(0.0, 12.0))
+        end
       else
         installs.each do |install|
-          draw_install_row(ctx, ui, install)
-          ui.separator
+          card(ui) { |c| draw_install_row(ctx, c, install) }
+          ui.allocate_space(Egui::Vec2.new(0.0, 8.0))
         end
       end
 
       # First install: the big Install button; anything already
       # installed: the same wizard entry, renamed and re-iconed.
-      install_btn = installs.empty? ?
-        ui.big_button(L.t("home.install_button", title: game_title(game)),
-          icon: Egui::Icon.from_file(:lucide, :download, tint: ui.style.visuals.text_color)) :
-        ui.big_button(L.t("home.add_more"),
-          icon: Egui::Icon.from_file(:lucide, :plus, tint: ui.style.visuals.text_color))
-      open_wizard if install_btn.clicked?
+      first = installs.empty?
+      label = first ? L.t("home.install_button", title: game_title(game)) : L.t("home.add_more")
+      ui.with_style_scope("hero") do |h|
+        icon = first ? Egui::Icon.from_file(:lucide, :download, tint: Egui::Color32.rgb(255, 255, 255)) \
+                     : Egui::Icon.from_file(:lucide, :plus, tint: Egui::Color32.rgb(255, 255, 255))
+        if hero_button(h, label, icon).clicked?
+          open_wizard
+        end
+      end
     end
 
     # The "Modified game" page: same shape as a game page, but each
     # install carries its own compatibility mode (shown per row) and
     # the wizard gains the mode-select step.
     private def draw_mod_page(ctx : Egui::Context, ui : Egui::Ui) : Nil
-      ui.heading(L.t("games.mod.title"))
-      ui.rich(muted(L.t("games.mod.notes")), wrap: true)
-      ui.separator
+      # The game header: a gradient hero card, same shape as a game page.
+      card(ui, fill: CARD_TOP, fill2: CARD_BOTTOM) do |c|
+        c.heading(L.t("games.mod.title"))
+        c.rich(muted(L.t("games.mod.notes")), wrap: true)
+      end
+      ui.allocate_space(Egui::Vec2.new(0.0, 8.0))
 
       installs = @store.custom_installs
       if installs.empty?
-        ui.label(L.t("home.no_installs"))
+        card(ui) do |c|
+          c.allocate_space(Egui::Vec2.new(0.0, 14.0))
+          c.label(L.t("home.no_installs"), align: :center)
+          c.allocate_space(Egui::Vec2.new(0.0, 12.0))
+        end
       else
         installs.each do |install|
           mode_game = Catalog[install.game]? # install.game = the chosen compat mode
-          draw_install_row(ctx, ui, install,
-            subtitle: mode_game ? game_title(mode_game) : nil)
-          ui.separator
+          card(ui) do |c|
+            draw_install_row(ctx, c, install,
+              subtitle: mode_game ? game_title(mode_game) : nil)
+          end
+          ui.allocate_space(Egui::Vec2.new(0.0, 8.0))
         end
       end
 
-      install_btn = installs.empty? ?
-        ui.big_button(L.t("home.install_button", title: L.t("games.mod.title")),
-          icon: Egui::Icon.from_file(:lucide, :download, tint: ui.style.visuals.text_color)) :
-        ui.big_button(L.t("home.add_more"),
-          icon: Egui::Icon.from_file(:lucide, :plus, tint: ui.style.visuals.text_color))
-      open_wizard(mod: true) if install_btn.clicked?
+      first = installs.empty?
+      label = first ? L.t("home.install_button", title: L.t("games.mod.title")) : L.t("home.add_more")
+      ui.with_style_scope("hero") do |h|
+        icon = first ? Egui::Icon.from_file(:lucide, :download, tint: Egui::Color32.rgb(255, 255, 255)) \
+                     : Egui::Icon.from_file(:lucide, :plus, tint: Egui::Color32.rgb(255, 255, 255))
+        if hero_button(h, label, icon).clicked?
+          open_wizard(mod: true)
+        end
+      end
     end
 
+    # One install inside a card: path + creation info, the big gradient
+    # Play button, then a row of quiet secondary actions.
     private def draw_install_row(ctx : Egui::Context, ui : Egui::Ui,
                                  install : Store::Install, subtitle : String? = nil) : Nil
       ui.label(File.expand_path(install.path))
       ui.rich(muted(subtitle), wrap: true) if subtitle
       ui.rich(muted(L.t("home.created_line",
         created: install.created_at, engine: install.engine, source: install.source)), wrap: true)
+      ui.allocate_space(Egui::Vec2.new(0.0, 4.0))
 
-      # Play: the big full-width button, like Install on the game page.
-      if ui.big_button(L.t("home.run"),
-          icon: Egui::Icon.from_file(:lucide, :play, tint: ui.style.visuals.text_color)).clicked?
-        begin
-          Runner.run(install)
-          @status = L.t("status.launched", path: install.path)
-        rescue ex : InstallError | File::Error
-          @status = L.t("status.launch_failed", message: ex.message)
+      # Play: the big full-width gradient button, like Install on the
+      # game page, but in the brighter "hero.play" variant.
+      ui.with_style_scope("hero") do |h|
+        h.with_style_scope("play") do |p|
+          if hero_button(p, L.t("home.run"),
+              Egui::Icon.from_file(:lucide, :play, tint: Egui::Color32.rgb(255, 255, 255))).clicked?
+            begin
+              Runner.run(install)
+              @status = L.t("status.launched", path: install.path)
+            rescue ex : InstallError | File::Error
+              @status = L.t("status.launch_failed", message: ex.message)
+            end
+          end
         end
       end
+      ui.allocate_space(Egui::Vec2.new(0.0, 4.0))
 
-      ui.horizontal do |h|
+      ui.horizontal(wrap: false) do |h|
         fg = h.style.visuals.text_color
         if icon_button(h, L.t("home.logs"),
             Egui::Icon.from_file(:lucide, :scroll_text, tint: fg)).clicked?
@@ -379,8 +685,15 @@ module Launcher
             ? L.t("status.opened_folder", path: install.path) : L.t("status.no_file_manager")
         end
         if @confirm_delete == install.path
-          if icon_button(h, L.t("home.confirm_delete"),
-              Egui::Icon.from_file(:lucide, :trash, tint: fg)).clicked?
+          # Confirm: a red-tinted danger button for the destructive step.
+          confirm = Egui::Button.new(L.t("home.confirm_delete"))
+            .icon(Egui::Icon.from_file(:lucide, :trash, tint: Egui::Color32.rgb(255, 170, 170)))
+          confirm.style do |s|
+            s.background = Egui::Color32.rgba(235, 90, 90, 60)
+            s.stroke = Egui::Color32.rgba(235, 90, 90, 170)
+            s.text_color = Egui::Color32.rgb(255, 180, 180)
+          end
+          if h.add(confirm).clicked?
             do_uninstall(install)
           end
           if icon_button(h, L.t("home.cancel"),
@@ -840,7 +1153,11 @@ end
 
 # GUI entry: single instance only (an old window still open must not
 # race the config), then decode the window icon and hand control to egui.
-if ARGV.empty?
+# XR_LAUNCHER_HEADLESS: require-for-the-class only — the headless
+# screenshot driver (spec/sidebar_shots.cr) builds Launcher::App itself.
+if ENV["XR_LAUNCHER_HEADLESS"]?
+  # no entry — the requiring script drives the frames
+elsif ARGV.empty?
   begin
     Launcher::SingleInstance.acquire!
   rescue Launcher::SingleInstance::AlreadyRunning
@@ -864,7 +1181,10 @@ if ARGV.empty?
     # titlebar, the frame draws its own caption with min/max/close.
     decorations: false,
     chrome: true,
-    chrome_style: Egui::WindowFrame::Style::Windows)
+    chrome_style: Egui::WindowFrame::Style::Windows,
+    # Widget inspector panel (F12 toggles it): compiled in only by
+    # `rake build:dev` (-Dwidget_inspector); other builds stay :off.
+    inspector: {% if flag?(:widget_inspector) %} :on {% else %} :off {% end %})
 else
   exit Launcher.cli(ARGV)
 end
