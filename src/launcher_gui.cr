@@ -49,18 +49,13 @@ module Launcher
   # One sidebar row as a real Widget (was paint-in-place: raw
   # allocate/interact/painter calls the widget inspector could not
   # see). Living through `Ui#add` gives it an inspector pick, a stable
-  # explicit id ("game-<key>") and the style cascade — class rules
-  # ("sidebar.entry", with :hover/:active overlays) plus per-element
-  # inspector overrides. The built-in "Zone" look (the selected amber
-  # gradient card with a drop shadow, the hover translucent surface)
-  # are the FALLBACKS of those same keys (the Button#gradient
-  # pattern), so every value stays editable per state.
+  # explicit id ("game-<key>") and the style cascade — the whole look
+  # lives in the "sidebar.entry" class rules of xr_theme (base shape,
+  # a `:hover` translucent surface, the `:selected` amber gradient
+  # card with a drop shadow). Here only the state string changes —
+  # CSS pseudo-class style, same pattern as egui.cr's own Sidebar.
   class SidebarEntry
     include Egui::Widget
-
-    SEL_STROKE = Egui::Color32.rgba(255, 214, 130, 90)
-    SEL_INFO   = Egui::Color32.rgba(70, 46, 8, 220)
-    HOVER_FILL = Egui::Color32.rgba(255, 255, 255, 16)
 
     def initialize(key : String, @title : String, @info : String,
                    @selected : Bool, @icon_path : String?)
@@ -76,7 +71,7 @@ module Launcher
     end
 
     def style_properties : Array(Egui::StyleProp)
-      props = Egui::StyleProps.sizable + [
+      Egui::StyleProps.sizable + [
         Egui::StyleProp.new("background", :color, states: true),
         Egui::StyleProp.new("background2", :color, states: true,
           label: "background 2 (gradient)"),
@@ -90,17 +85,6 @@ module Launcher
         Egui::StyleProp.new("shadow.x", :number),
         Egui::StyleProp.new("shadow.y", :number),
       ]
-      # A selected card seeds its live painted values as the display
-      # defaults, so inspector edits start from what is on screen.
-      if @selected
-        seed = {"background"  => App::ACCENT_LIGHT,
-                "background2" => App::ACCENT_DARK,
-                "stroke"      => SEL_STROKE,
-                "text_color"  => App::ON_ACCENT,
-                "info_color"  => SEL_INFO}
-        props = props.map { |p| (v = seed[p.key]?) ? p.with_fallback(v) : p }
-      end
-      props
     end
 
     def ui(ui : Egui::Ui) : Egui::Response
@@ -116,37 +100,31 @@ module Launcher
       rect = ui.allocate_at_least(sz)
       response = ui.interact(rect, id, Egui::Sense.click)
 
-      # The state bag re-resolved for the live state: a
-      # `sidebar.entry:hover` rule / inspector state override applies
-      # while hovered.
-      state = response.hovered? ? "hover" : nil
+      # The state bag: base rule + the overlay of the live state. The
+      # selected card keeps its :selected look while hovered (the
+      # gradient does not give way to the hover surface) — same
+      # precedence as egui.cr's own Sidebar tabs.
+      state = @selected ? "selected" : (response.hovered? ? "hover" : nil)
       sv = style_vars(ui, id, state)
       painter = ui.painter
       rounding = sv.f64("rounding", 10.0)
 
-      # The selected card's drop shadow — under the fill like before.
-      shadow = sv.shadow?
-      shadow ||= Egui::BoxShadowSpec.new(App::CARD_SHADOW, 10.0, 0.0,
-        Egui::Vec2.new(0.0, 3.0)) if @selected
-      if shadow && !shadow.inset?
+      # The card's drop shadow (the :selected rule's shadow.*) — under
+      # the fill like before.
+      if (shadow = sv.shadow?) && !shadow.inset?
         painter.box_shadow(rect, shadow.color, blur: shadow.blur,
           rounding: rounding, spread: shadow.spread, offset: shadow.offset)
       end
 
-      # Fill: selected → the amber gradient (kept while hovered, the
-      # original look), hovered → a translucent surface, else nothing.
-      fill = sv.color?("background") ||
-             (@selected ? App::ACCENT_LIGHT : (response.hovered? ? HOVER_FILL : nil))
-      fill2 = sv.color?("background2") || (@selected ? App::ACCENT_DARK : nil)
-      if fill
-        painter.rect(rect, rounding, fill: fill, fill2: fill2,
-          stroke_color: sv.color?("stroke") || (@selected ? SEL_STROKE : nil))
+      # Fill: whatever the cascade gives — the :hover translucent
+      # surface or the :selected amber gradient; nothing at rest.
+      if (fill = sv.color?("background"))
+        painter.rect(rect, rounding, fill: fill,
+          fill2: sv.color?("background2"), stroke_color: sv.color?("stroke"))
       end
 
-      title_color = sv.color?("text_color") ||
-                    (@selected ? App::ON_ACCENT : ui.style.visuals.text_color)
-      info_color = sv.color?("info_color") ||
-                   (@selected ? SEL_INFO : App::COLOR_MUTED)
+      title_color = sv.color("text_color", ui.style.visuals.text_color)
+      info_color = sv.color("info_color", App::COLOR_MUTED)
 
       tx = rect.left + 12.0
       if (path = @icon_path) && File.exists?(path) &&
@@ -323,6 +301,25 @@ module Launcher
       # Wizard chrome follows the card surfaces.
       sheet.rule("wizard.header", Egui::StyleVars{"background" => CARD_TOP})
       sheet.rule("side_image", Egui::StyleVars{"background" => CARD_BOTTOM})
+      # The home sidebar's game cards (SidebarEntry): rounded web-nav
+      # rows; hover a white surface, selected the grey card with a drop
+      # shadow and a near-black label. Everything is the cascade —
+      # editable per state in the widget inspector.
+      sheet.rule("sidebar.entry", Egui::StyleVars{
+        "icon_size" => 24.0,
+        "rounding"  => 10.0,
+      })
+      sheet.rule("sidebar.entry:hover", Egui::StyleVars{
+        "background" => Egui::Color32.rgb(255, 255, 255),
+      })
+      sheet.rule("sidebar.entry:selected", Egui::StyleVars{
+        "background"    => Egui::Color32.rgb(161, 161, 161),
+        "info_color"    => Egui::Color32.rgb(70, 46, 8),
+        "shadow.blur"   => 10.0,
+        "shadow.color"  => Egui::Color32.rgb(0, 0, 0),
+        "shadow.y"      => 3.0,
+        "text_color"    => Egui::Color32.rgb(40, 27, 6),
+      })
       theme
     end
 
