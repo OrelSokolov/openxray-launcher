@@ -22,6 +22,7 @@ en:
     add_more: "Add more…"
     created_line: "created %{created} · engine %{engine} · source %{source}"
     run: Play
+    running: Running
     logs: Logs
     open_folder: Open folder
     delete: Delete
@@ -93,6 +94,8 @@ en:
     install_failed: "Install failed: %{message}"
     install_cancelled: Install cancelled
     launched: "Launched %{path}"
+    already_running: "Already running: %{path}"
+    exited: "Game exited: %{path}"
     launch_failed: "Launch failed: %{message}"
     opened_folder: "Opened %{path}"
     no_file_manager: No file manager available

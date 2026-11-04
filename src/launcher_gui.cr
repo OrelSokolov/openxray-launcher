@@ -191,6 +191,12 @@ module Launcher
     @confirm_delete : String? = nil
     @selected = "cop"
 
+    # Live launches of THIS launcher session: install path → Process.
+    # Complements the pid file (which survives restarts but says
+    # nothing about processes we can wait on directly).
+    @running = {} of String => Process
+    @run_watcher_active = false
+
     # exml side: parsed markup, one renderer, the store + actions.
     @exml : Egui::Exml::Document
     @renderer = Egui::Exml::Renderer.new
@@ -310,10 +316,10 @@ module Launcher
         "rounding"  => 10.0,
       })
       sheet.rule("sidebar.entry:hover", Egui::StyleVars{
-        "background" => Egui::Color32.rgb(255, 255, 255),
+        "background" => Egui::Color32.rgb(32, 37, 45),
       })
       sheet.rule("sidebar.entry:selected", Egui::StyleVars{
-        "background"    => Egui::Color32.rgb(161, 161, 161),
+        "background"    => Egui::Color32.rgb(147, 156, 176),
         "info_color"    => Egui::Color32.rgb(70, 46, 8),
         "shadow.blur"   => 10.0,
         "shadow.color"  => Egui::Color32.rgb(0, 0, 0),
@@ -373,6 +379,7 @@ module Launcher
     def update(ctx : Egui::Context) : Nil
       @exml.reload_if_changed
       sync_store
+      start_run_watcher(ctx)
       # exml renders the current route: menu bar + settings page /
       # About modal + status bar; on root/root the <launcher_home/>
       # element opens the sidebar + central panels inside the page.
@@ -650,17 +657,23 @@ module Launcher
       ui.allocate_space(Egui::Vec2.new(0.0, 4.0))
 
       # Play: the big full-width gradient button, like Install on the
-      # game page, but in the brighter "hero.play" variant.
+      # game page, but in the brighter "hero.play" variant. While the
+      # game runs (this session or a pid parked by an earlier launch)
+      # it shows the running state and does not relaunch.
+      running = install_running?(install)
       ui.with_style_scope("hero") do |h|
         h.with_style_scope("play") do |p|
-          if hero_button(p, L.t("home.run"),
-              Egui::Icon.from_file(:lucide, :play, tint: Egui::Color32.rgb(255, 255, 255))).clicked?
+          icon = running ? Egui::Icon.from_file(:lucide, :iteration_ccw, tint: Egui::Color32.rgb(255, 255, 255)) \
+                         : Egui::Icon.from_file(:lucide, :play, tint: Egui::Color32.rgb(255, 255, 255))
+          if !running && hero_button(p, L.t("home.run"), icon).clicked?
             begin
-              Runner.run(install)
+              @running[install.path] = Runner.run(install)
               @status = L.t("status.launched", path: install.path)
             rescue ex : InstallError | File::Error
               @status = L.t("status.launch_failed", message: ex.message)
             end
+          elsif running && hero_button(p, L.t("home.running"), icon).clicked?
+            @status = L.t("status.already_running", path: install.path)
           end
         end
       end
@@ -701,6 +714,47 @@ module Launcher
             Egui::Icon.from_file(:lucide, :trash, tint: fg)).clicked?
           @confirm_delete = install.path
           @status = L.t("status.confirm_delete_status", path: install.path)
+        end
+      end
+    end
+
+    # Is this install's game running? Processes launched by THIS
+    # session are asked directly (and reaped via terminated?); anything
+    # else falls back to the parked pid file — so a game started by the
+    # CLI or by a previous launcher session counts too.
+    private def install_running?(install : Store::Install) : Bool
+      if process = @running[install.path]?
+        unless process.terminated?
+          return true
+        end
+        # Just noticed the exit: forget the process and — only if no
+        # newer launch overwrote it — the pid file; report the end of
+        # the run in the status bar.
+        @running.delete(install.path)
+        Runner.clear_pid(install) if Runner.running_pid(install) == process.pid
+        @status = L.t("status.exited", path: install.path)
+      end
+      Runner.running?(install)
+    end
+
+    # Repaints run on demand, so an exit that happens while the user
+    # idles would go unnoticed. This fiber polls the tracked processes
+    # (plus the parked pids — a CLI launch never lands in @running):
+    # once a second while anything runs, otherwise a slow 5 s sweep
+    # that also catches a game started from the CLI meanwhile.
+    private def start_run_watcher(ctx : Egui::Context) : Nil
+      return if @run_watcher_active
+      @run_watcher_active = true
+      spawn do
+        while true
+          live = @running.any? { |_, process| !process.terminated? } ||
+                 @store.installs.any? { |install| Runner.running?(install) }
+          if live
+            ctx.request_repaint
+            sleep(Time::Span.new(seconds: 1))
+          else
+            sleep(Time::Span.new(seconds: 5))
+          end
         end
       end
     end
@@ -994,6 +1048,12 @@ module Launcher
       wizard = Egui::Wizard.new(
         L.t("home.install_button", title: wizard_title(w)).sub("…", ""), steps,
         id: "install-wizard")
+      # The standard footer falls back to the component's English
+      # defaults; the target step's custom buttons carry their own
+      # L.t labels.
+      wizard.back_label = L.t("wizard.back")
+      wizard.next_label = L.t("wizard.next")
+      wizard.cancel_label = L.t("wizard.cancel")
       wizard.on_finish { |_wiz| register_install(w) }
       wizard.on_cancel { |_wiz| @status = L.t("status.install_cancelled") }
       wizard

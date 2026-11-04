@@ -22,6 +22,7 @@ ru:
     add_more: "Добавить ещё…"
     created_line: "создано %{created} · движок %{engine} · источник %{source}"
     run: Играть
+    running: Запущено
     logs: Логи
     open_folder: Открыть папку
     delete: Удалить
@@ -93,6 +94,8 @@ ru:
     install_failed: "Ошибка установки: %{message}"
     install_cancelled: Установка отменена
     launched: "Запущено: %{path}"
+    already_running: "Уже запущено: %{path}"
+    exited: "Игра завершена: %{path}"
     launch_failed: "Ошибка запуска: %{message}"
     opened_folder: "Открыто: %{path}"
     no_file_manager: Файловый менеджер недоступен

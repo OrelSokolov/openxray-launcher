@@ -1,5 +1,5 @@
 name: xr-launcher
-version: 1.0.0
+version: 1.1.0
 description: |
   Universal OpenXRay game launcher/installer: assembles a playable
   S.T.A.L.K.E.R. distribution (engine binaries + symlinked game data +
