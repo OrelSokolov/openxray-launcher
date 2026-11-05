@@ -74,6 +74,25 @@ describe Launcher::LogAnalyzer do
     end
   end
 
+  it "decodes windows-1251 log lines instead of dropping Cyrillic" do
+    with_tmp do |root|
+      logs = File.join(root, "cop", "_appdata_", "logs")
+      Dir.mkdir_p(logs)
+      # windows-1251 "тест" plus a texture miss: raw bytes used to kill the
+      # UTF-mode regex match, a plain scrub would drop the Cyrillic entirely.
+      File.write(File.join(logs, "xr_3da_player.log"),
+        String.build do |s|
+          s << "! \xF2\xE5\xF1\xF2 load failed\r\n" # "тест" in windows-1251
+          s << "! Can't find texture 'act\\act_arm_1'\r\n"
+        end)
+
+      report = Launcher::LogAnalyzer.scan_dir(logs)
+      report.textures.count.should eq(1)
+      report.warnings.count.should eq(1)
+      report.warnings.samples.should contain("! тест load failed")
+    end
+  end
+
   it "clears log files so the next report starts fresh" do
     with_tmp do |root|
       install = fake_install_with_logs(root)

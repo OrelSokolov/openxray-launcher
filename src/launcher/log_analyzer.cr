@@ -97,9 +97,14 @@ module Launcher
     end
 
     private def self.scan_file(path : String, report : Report) : Nil
-      # \r\n is stripped by chomp; invalid bytes must not fail the scan.
+      # X-Ray writes its logs in windows-1251 (Russian messages from the
+      # engine), the launcher's own log in UTF-8: decode per file. An
+      # undecodable file must never kill the scan — scrub falls back to
+      # dropping bad bytes, so only Cyrillic is lost, not the analysis.
+      # UTF-mode regexes would otherwise die on raw bytes (PCRE2 error).
+      text = read_log_text(path)
       pending_expression = false # FATAL ERROR seen, waiting for its Expression line
-      File.each_line(path, invalid: :skip) do |raw|
+      text.each_line do |raw|
         line = raw.chomp
         report.lines += 1
 
@@ -121,6 +126,17 @@ module Launcher
           report.warnings.bump(line)
         end
       end
+    end
+
+    # Reads a log as UTF-8 text: valid UTF-8 passes through as is, anything
+    # else (windows-1251) is converted; a conversion failure degrades to
+    # dropping invalid bytes instead of raising.
+    private def self.read_log_text(path : String) : String
+      raw = File.read(path)
+      return raw if raw.valid_encoding?
+      String.new(raw.to_slice, "windows-1251", invalid: :skip)
+    rescue ex : ArgumentError | File::Error | IO::Error
+      raw.try(&.scrub) || ""
     end
   end
 end
