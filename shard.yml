@@ -13,3 +13,28 @@ dependencies:
     version: ">= 0.5.0"
   i18n:
     github: crystal-i18n/i18n
+
+# carat delivery contract (mirrors lib/egui-cr/shard.yml): `all:`
+# carries the shared spec — the native prebuild (rake native is
+# idempotent; the shims land in lib/, lib/egui-cr/lib symlinks there)
+# and the per-OS link flags. One binary covers both faces: no args ->
+# GUI, subcommands (list/install/run/remove) -> headless CLI.
+binaries:
+  all:
+    prebuild: rake native
+    link_flags:
+      "*": [-Llib]
+      linux: [-Llib]
+      darwin: [-framework Cocoa, -framework OpenGL, -framework QuartzCore, -framework AVFoundation, -framework CoreMedia, -framework IOKit]
+      windows: [/LIBPATH:lib]
+
+  xr-launcher:
+    main: src/launcher_gui.cr
+    launchers:
+      terminal: true
+      menu: true
+      desktop: true
+
+# Desktop icon for the GUI binary (carat checks PNG/SVG magic bytes).
+assets:
+  appicon: assets/icons/launcher.png
