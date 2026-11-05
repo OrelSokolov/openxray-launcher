@@ -74,7 +74,9 @@ module Launcher
       install = store.find_by_path(File.expand_path(path)) ||
                 store.for_game(path).first? ||
                 abort("no install matching #{path}")
-      Runner.run(install)
+      # the install's stored play-button mode applies to CLI launches too
+      args = install.launch_mode == "lastsave" ? [Runner::LASTSAVE_FLAG] : [] of String
+      Runner.run(install, args)
       puts L.t("cli.launched", path: install.path)
       0
     when "remove"

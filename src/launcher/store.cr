@@ -21,6 +21,11 @@ module Launcher
       # true: a modified game install (compat mode picked in the wizard);
       # absent in configs written before the feature — defaults to false
       getter? custom : Bool = false
+      # Play-button mode for THIS install: "play" — start to the main
+      # menu; "lastsave" — also pass -lastsave so the engine loads the
+      # last save straight away. Absent in configs written before the
+      # feature — defaults to "play".
+      property launch_mode : String = "play"
 
       def initialize(@id, @game, @path, @engine, @source, @created_at, @custom = false)
       end
@@ -30,6 +35,11 @@ module Launcher
     property recent_engine : String?
     property recent_sources : Hash(String, String) # game id => last source dir
     property locale : String?                      # UI language, e.g. "ru"
+    property last_played_section : String?         # sidebar section open at exit (game id or "mod")
+
+    # Valid play-button modes (per install, see Install#launch_mode).
+    DEFAULT_LAUNCH_MODE = "play"
+    LAUNCH_MODES        = %w[play lastsave]
 
     def initialize
       @installs = [] of Install
@@ -61,6 +71,7 @@ module Launcher
       end
       store.recent_engine = data["recent_engine"]?.try &.as_s?
       store.locale = data["locale"]?.try &.as_s?
+      store.last_played_section = data["last_played_section"]?.try &.as_s?
       sources = data["recent_sources"]?.try(&.as_h?) || {} of String => JSON::Any
       sources.each do |game, dir|
         store.recent_sources[game] = dir.as_s
@@ -78,6 +89,7 @@ module Launcher
         end
         json.field "recent_engine", recent_engine
         json.field "locale", locale
+        json.field "last_played_section", last_played_section
         json.field "recent_sources" do
           json.object do
             recent_sources.each { |k, v| json.field k, v }
@@ -104,6 +116,14 @@ module Launcher
     def add_install(install : Install) : Nil
       installs.reject! { |i| i.path == install.path }
       installs << install
+    end
+
+    # Install is a value struct: an edited copy must be written back
+    # (by id) or the change silently dies with the copy.
+    def update_install(install : Install) : Nil
+      installs.each_with_index do |i, idx|
+        installs[idx] = install if i.id == install.id
+      end
     end
 
     def remove_install(path : String) : Nil

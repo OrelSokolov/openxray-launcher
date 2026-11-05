@@ -45,6 +45,21 @@ describe Launcher::Runner do
     end
   end
 
+  it "passes extra args (the -lastsave play mode) to the engine" do
+    with_tmp do |dir|
+      install = fake_install(dir)
+      exe = File.join(dir, "bin", Launcher::Engine.executable_name)
+      File.write(exe, %(#!/bin/sh\nprintf '%s\\n' "$@" > "#{dir}/args"\n))
+      File.chmod(exe, 0o755)
+
+      process = Launcher::Runner.run(install, [Launcher::Runner::LASTSAVE_FLAG])
+      process.wait
+      args = File.read(File.join(dir, "args"))
+      args.should contain("-shoc") # the per-game mode flag stays first
+      args.should contain(Launcher::Runner::LASTSAVE_FLAG)
+    end
+  end
+
   it "clear_pid removes the pid file" do
     with_tmp do |dir|
       install = fake_install(dir)

@@ -21,7 +21,10 @@ en:
     install_button: "Install %{title}…"
     add_more: "Add more…"
     created_line: "created %{created} · engine %{engine} · source %{source}"
+    mode_play: "Normal start"
+    mode_last_save: "Last save"
     run: Play
+    run_last_save: "Play (last save)"
     running: Running
     logs: Logs
     open_folder: Open folder
@@ -97,6 +100,7 @@ en:
     already_running: "Already running: %{path}"
     exited: "Game exited: %{path}"
     launch_failed: "Launch failed: %{message}"
+    launch_mode_saved: "Play button mode saved: %{mode}"
     opened_folder: "Opened %{path}"
     no_file_manager: No file manager available
     confirm_delete_status: "Confirm to delete %{path} (the original game copy is kept)"

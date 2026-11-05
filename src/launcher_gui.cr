@@ -199,6 +199,11 @@ module Launcher
     CARD_STROKE   = Egui::Color32.rgba(255, 255, 255, 20)
     CARD_SHADOW   = Egui::Color32.rgba(0, 0, 0, 110)
     CARD_ROUNDING = 12.0
+    # The last-save toggle's "on" track: the play gradient's slate blue
+    # (the theme's amber selection_fill everywhere else). Inline per
+    # widget — ToggleButton does not resolve sheet class rules into its
+    # visuals (unlike Button).
+    PLAY_TOGGLE_FILL = Egui::Color32.rgb(143, 157, 179)
 
     SETTINGS = "root/settings"
 
@@ -384,6 +389,10 @@ module Launcher
       end
 
       register_actions
+      # Sidebar section open at startup: the one open at exit (when it
+      # still exists), else CoP. Set here — an ivar initializer runs in
+      # class scope and cannot call the instance helper.
+      @selected = restored_section
       # The theme swap must land before the first frame; it goes last —
       # an instance call before every ivar is assigned trips Crystal's
       # "possibly uninitialized ivar" check.
@@ -526,10 +535,27 @@ module Launcher
         icon_path))
       return unless response.clicked?
       response.mark_changed
-      @selected = id
+      select_section(id)
       @wizard = nil
       @logs = nil
       @confirm_delete = nil
+    end
+
+    # Selecting a sidebar section (or landing on one after an install)
+    # also persists it — the next start reopens where the user left off.
+    private def select_section(id : String) : Nil
+      @selected = id
+      @store.last_played_section = id
+      @store.save
+    end
+
+    # The section to restore: the stored one when it still exists (a
+    # known game id or the Mods entry — not some id an older config
+    # carried), else the CoP default.
+    private def restored_section : String
+      id = @store.last_played_section
+      id = nil unless id && (Catalog[id]? || id == MOD_ID)
+      id || "cop"
     end
 
     # --- the central content --------------------------------------------------
@@ -689,14 +715,29 @@ module Launcher
       # game page, but in the brighter "hero.play" variant. While the
       # game runs (this session or a pid parked by an earlier launch)
       # it shows the running state and does not relaunch.
+      #
+      # The toggle below picks the mode for THIS install: a plain
+      # start, or -lastsave (the engine loads the last save straight
+      # away, skipping the main menu) — the button follows it: label,
+      # icon and the launch flag itself.
+      last_save = install.launch_mode == "lastsave"
       running = install_running?(install)
       ui.with_style_scope("hero") do |h|
         h.with_style_scope("play") do |p|
-          icon = running ? Egui::Icon.from_file(:lucide, :iteration_ccw, tint: Egui::Color32.rgb(255, 255, 255)) \
-                         : Egui::Icon.from_file(:lucide, :play, tint: Egui::Color32.rgb(255, 255, 255))
-          if !running && hero_button(p, L.t("home.run"), icon).clicked?
+          # NOTE: Icon.from_file needs a LITERAL icon symbol (its file
+          # lookup is a compile-time read_file), so no ternary here.
+          icon = if running
+                   Egui::Icon.from_file(:lucide, :iteration_ccw, tint: Egui::Color32.rgb(255, 255, 255))
+                 elsif last_save
+                   Egui::Icon.from_file(:lucide, :save, tint: Egui::Color32.rgb(255, 255, 255))
+                 else
+                   Egui::Icon.from_file(:lucide, :play, tint: Egui::Color32.rgb(255, 255, 255))
+                 end
+          label = last_save && !running ? L.t("home.run_last_save") : L.t("home.run")
+          if !running && hero_button(p, label, icon).clicked?
             begin
-              @running[install.path] = Runner.run(install)
+              args = last_save ? [Runner::LASTSAVE_FLAG] : [] of String
+              @running[install.path] = Runner.run(install, args)
               @status = L.t("status.launched", path: install.path)
             rescue ex : InstallError | File::Error
               @status = L.t("status.launch_failed", message: ex.message)
@@ -705,6 +746,18 @@ module Launcher
             @status = L.t("status.already_running", path: install.path)
           end
         end
+      end
+
+      toggle = Egui::ToggleButton.new(last_save, L.t("home.mode_last_save"),
+        id: "launch-mode-#{install.id}")
+      toggle.style { |s| s.selection_fill = PLAY_TOGGLE_FILL }
+      if ui.add(toggle).changed?
+        enabled = !last_save
+        install.launch_mode = enabled ? "lastsave" : "play"
+        @store.update_install(install)
+        @store.save
+        @status = L.t("status.launch_mode_saved",
+          mode: enabled ? L.t("home.mode_last_save") : L.t("home.mode_play"))
       end
       ui.allocate_space(Egui::Vec2.new(0.0, 4.0))
 
@@ -1130,7 +1183,7 @@ module Launcher
           @status = line
         }
         @status = L.t("status.installed", path: install.path)
-        @selected = w.mod? ? MOD_ID : w.game.id
+        select_section(w.mod? ? MOD_ID : w.game.id)
       rescue ex : InstallError | File::Error
         w.failed = true
         @status = L.t("status.install_failed", message: ex.message)
@@ -1158,7 +1211,7 @@ module Launcher
         @store.add_install(install)
         @store.save
         @status = L.t("status.registered", path: path)
-        @selected = w.mod? ? MOD_ID : w.game.id
+        select_section(w.mod? ? MOD_ID : w.game.id)
       rescue ex : File::Error | IO::Error
         @status = L.t("status.register_failed", message: ex.message)
       end

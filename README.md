@@ -72,7 +72,12 @@ game, target. Assembly creates:
 
 Launch runs `bin/xr_3da <mode-flag>` with `<target>` as the working
 directory (plus the matching `-shoc`/`-cs`/`-cop` flag, so the mode is set
-by both the config file and the command line). The engine process is
+by both the config file and the command line). The *Last save* toggle
+under the Play button makes it launch with `-lastsave`, so the engine
+loads the most recent save straight away, skipping the main menu (no
+last save or a broken one → a normal menu start, see the engine's
+`plans/LASTSAVE_LOAD.md`); it is stored per install (`"launch_mode"` in
+the config), so `xr-launcher run` follows it too. The engine process is
 detached: closing the launcher does not close the game.
 
 Delete removes **only this folder**. It refuses to delete folders not
@@ -141,6 +146,9 @@ spec picks the new file up automatically.
   on-disk install markers). Saves are atomic (PID-suffixed tmp + rename)
   and keep the previous config as `launcher.json.bak`; a corrupt config is
   backed up to `launcher.json.corrupt` instead of being silently reset.
+- The sidebar section open at exit (`"last_played_section"`) reopens at
+  the next start; per install, `"launch_mode"` records the Play-button
+  last-save toggle.
 - Only one launcher instance may run: an exclusive `flock` on
   `<config_dir>/lock`; a second instance exits with an "already running"
   error (localized) instead of racing over the config.

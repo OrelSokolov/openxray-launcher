@@ -21,7 +21,10 @@ ru:
     install_button: "Установить %{title}…"
     add_more: "Добавить ещё…"
     created_line: "создано %{created} · движок %{engine} · источник %{source}"
+    mode_play: "Обычный запуск"
+    mode_last_save: "Последнее сохранение"
     run: Играть
+    run_last_save: "Играть (последнее сохранение)"
     running: Запущено
     logs: Логи
     open_folder: Открыть папку
@@ -97,6 +100,7 @@ ru:
     already_running: "Уже запущено: %{path}"
     exited: "Игра завершена: %{path}"
     launch_failed: "Ошибка запуска: %{message}"
+    launch_mode_saved: "Режим кнопки запуска сохранён: %{mode}"
     opened_folder: "Открыто: %{path}"
     no_file_manager: Файловый менеджер недоступен
     confirm_delete_status: "Подтвердите удаление %{path} (оригинальная копия игры останется нетронутой)"

@@ -16,6 +16,11 @@ module Launcher
   module Runner
     PID_FILE = "launcher.pid"
 
+    # Play-button "last save" mode: the engine skips the main menu and
+    # loads the most recent save right away (see plans/LASTSAVE_LOAD.md
+    # in the engine tree; the check is a substring, so -lastsave works).
+    LASTSAVE_FLAG = "-lastsave"
+
     def self.run(install : Store::Install,
                  extra_args : Array(String) = [] of String) : Process
       game = Catalog[install.game]

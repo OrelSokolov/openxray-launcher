@@ -74,6 +74,40 @@ describe Launcher::Store do
     end
   end
 
+  it "round-trips a per-install play-button launch mode" do
+    with_tmp do |dir|
+      path = File.join(dir, "store.json")
+      store = Launcher::Store.new
+      store.add_install(Launcher::Store::Install.new(
+        id: "soc-1", game: "soc", path: "/x", engine: "e", source: "s", created_at: "t"))
+      install = store.installs.first
+      install.launch_mode = "lastsave"
+      store.update_install(install)
+      store.save(path)
+      Launcher::Store.load(path).installs.first.launch_mode.should eq("lastsave")
+
+      # a config written before the feature existed starts in "play"
+      legacy = %({"version":1,"installs":[{"id":"x","game":"cop","path":"/x","engine":"e","source":"s","created_at":"t"}]})
+      File.write(path, legacy)
+      Launcher::Store.load(path).installs.first.launch_mode.should eq("play")
+    end
+  end
+
+  it "round-trips the last open sidebar section" do
+    with_tmp do |dir|
+      path = File.join(dir, "store.json")
+      store = Launcher::Store.new
+      store.last_played_section = "soc"
+      store.save(path)
+      Launcher::Store.load(path).last_played_section.should eq("soc")
+
+      # a config written before the feature existed has no section
+      legacy = %({"version":1,"installs":[]})
+      File.write(path, legacy)
+      Launcher::Store.load(path).last_played_section.should be_nil
+    end
+  end
+
   it "replaces an install at the same path on add" do
     with_tmp do |dir|
       store = Launcher::Store.new
