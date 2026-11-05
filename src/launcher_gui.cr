@@ -37,8 +37,37 @@ module Launcher
       candidates.find { |c| Dir.exists?(c) }
     end
 
+    # Compile-time fallback copies (resolved from the compile working
+    # directory — launcher/ — like the exml embed): a binary running
+    # from anywhere with no assets/ folder next to it still finds every
+    # icon. The files on disk win (icons stay hot-editable); the
+    # embedded copies keep a distributed binary self-contained.
+    EMBEDDED_ICONS = {
+      "launcher.png"      => {{ read_file "assets/icons/launcher.png" }}.to_slice,
+      "launcher_64.png"   => {{ read_file "assets/icons/launcher_64.png" }}.to_slice,
+      "launcher_128.png"  => {{ read_file "assets/icons/launcher_128.png" }}.to_slice,
+      "openxray_cop.png"  => {{ read_file "assets/icons/openxray_cop.png" }}.to_slice,
+      "openxray_cs.png"   => {{ read_file "assets/icons/openxray_cs.png" }}.to_slice,
+      "openxray_soc.png"  => {{ read_file "assets/icons/openxray_soc.png" }}.to_slice,
+    } of String => Bytes
+
     def self.icon(name : String) : String?
-      dir.try { |d| File.join(d, "icons", name) }
+      if (d = dir) && File.exists?(path = File.join(d, "icons", name))
+        path
+      elsif (bytes = EMBEDDED_ICONS[name]?)
+        materialize_icon(name, bytes)
+      end
+    end
+
+    # Drop the embedded bytes into the config dir once so the
+    # path-based image pipeline (ctx.load_image, the window-icon
+    # decode) works unchanged for a binary without an assets/ folder.
+    private def self.materialize_icon(name : String, bytes : Bytes) : String
+      cache = File.join(Paths.config_dir, "embedded-icons")
+      Dir.mkdir_p(cache) unless Dir.exists?(cache)
+      path = File.join(cache, name)
+      File.write(path, bytes) unless File.exists?(path)
+      path
     end
 
     def self.exml_path : String?
